@@ -19,6 +19,7 @@ import { ContextNodeMenu } from "@/components/canvas/ContextNodeMenu";
 import { DrawingTools } from "@/components/canvas/DrawingTools";
 import { FloatingToolbar } from "@/components/canvas/FloatingToolbar";
 import { NodeConfigPanel } from "@/components/canvas/NodeConfigPanel";
+import { WorkflowRuntimeBridge } from "@/components/runtime/WorkflowRuntimeBridge";
 import ActionNode from "@/components/nodes/ActionNode";
 import DashboardNode from "@/components/nodes/DashboardNode";
 import ShapeNode from "@/components/nodes/ShapeNode";
@@ -527,6 +528,7 @@ function CanvasInner() {
       ) : null}
 
       <FloatingToolbar />
+      <WorkflowRuntimeBridge />
       <DrawingTools />
       <AIChatPanel />
       <AddNodePanel />

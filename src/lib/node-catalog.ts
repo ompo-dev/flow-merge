@@ -509,6 +509,7 @@ export const parameterDefaults: Record<NodeTypeId, NodeParameterField[]> = {
     { label: "HTTP Method", type: "select", placeholder: "POST" },
     { label: "Path", type: "text", placeholder: "/webhook/cart" },
     { label: "Authentication", type: "select", placeholder: "None" },
+    { label: "Secret Token", type: "text", placeholder: "Optional shared secret" },
   ],
   trigger_schedule: [
     { label: "Trigger Interval", type: "select", placeholder: "Every 5 minutes" },
@@ -543,24 +544,31 @@ export const parameterDefaults: Record<NodeTypeId, NodeParameterField[]> = {
   ],
   action_split: [{ label: "Batch Size", type: "number", placeholder: "100" }],
   action_email: [
+    { label: "API Key", type: "text", placeholder: "re_..." },
+    { label: "From", type: "text", placeholder: "Flow Merge <alerts@company.com>" },
     { label: "To", type: "text", placeholder: "team@company.com" },
     { label: "Subject", type: "text", placeholder: "Weekly report" },
     { label: "Message", type: "textarea", placeholder: "Resumo do workflow..." },
   ],
   action_slack: [
+    { label: "Webhook URL", type: "text", placeholder: "https://hooks.slack.com/services/..." },
     { label: "Channel", type: "text", placeholder: "#growth" },
     { label: "Message", type: "textarea", placeholder: "Novo alerta de receita." },
   ],
   action_notion: [
+    { label: "Token", type: "text", placeholder: "secret_xxx" },
     { label: "Database ID", type: "text", placeholder: "notion-db-id" },
     { label: "Operation", type: "select", placeholder: "Create" },
   ],
   action_github: [
+    { label: "Token", type: "text", placeholder: "github_pat_xxx" },
     { label: "Owner", type: "text", placeholder: "acme" },
     { label: "Repository", type: "text", placeholder: "saas-app" },
     { label: "Operation", type: "select", placeholder: "Get Pull Request" },
   ],
   action_openai: [
+    { label: "API Key", type: "text", placeholder: "sk-..." },
+    { label: "API Base URL", type: "text", placeholder: "https://api.deepseek.com/v1/chat/completions" },
     { label: "Model", type: "select", placeholder: "gpt-4o-mini" },
     { label: "Prompt", type: "textarea", placeholder: "Resuma as métricas do dia..." },
   ],

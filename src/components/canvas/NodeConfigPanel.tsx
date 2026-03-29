@@ -107,6 +107,7 @@ export function NodeConfigPanel() {
   const updateNodeParameters = useFlowStore((state) => state.updateNodeParameters);
   const duplicateNode = useFlowStore((state) => state.duplicateNode);
   const deleteNode = useFlowStore((state) => state.deleteNode);
+  const runtimeBaseUrl = useFlowStore((state) => state.runtimeBaseUrl);
 
   const node = useMemo(
     () => activeWorkflow?.nodes.find((item) => item.id === selectedNodeId),
@@ -121,6 +122,19 @@ export function NodeConfigPanel() {
     configFields.length === 0 &&
     !node.data.nodeType.startsWith("viz_") &&
     node.data.nodeType !== "viz_dashboard";
+  const webhookPath =
+    node.data.nodeType === "trigger_webhook"
+      ? node.data.parameters?.Path ?? ""
+      : "";
+  const normalizedWebhookPath = webhookPath
+    ? webhookPath.startsWith("/")
+      ? webhookPath
+      : `/${webhookPath}`
+    : `/webhooks/${activeWorkflow?.id}/${node.id}`;
+  const webhookUrl =
+    node.data.nodeType === "trigger_webhook" && runtimeBaseUrl
+      ? `${runtimeBaseUrl}${normalizedWebhookPath}`
+      : null;
 
   return (
     <AnimatePresence>
@@ -211,6 +225,15 @@ export function NodeConfigPanel() {
                   )}
                   className="h-24 w-full resize-none rounded border border-[#30363d] bg-[#0d1117] px-2.5 py-1.5 font-mono text-[10px] text-[#e6edf3] outline-none"
                 />
+              </div>
+            ) : null}
+
+            {webhookUrl ? (
+              <div className="space-y-1">
+                <label className="text-[10px] text-[#7d8590]">Webhook URL</label>
+                <div className="rounded border border-[#30363d] bg-[#0d1117] px-2.5 py-2 text-[11px] text-[#e6edf3]">
+                  {webhookUrl}
+                </div>
               </div>
             ) : null}
           </div>

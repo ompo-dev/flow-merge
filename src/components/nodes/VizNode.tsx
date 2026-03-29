@@ -196,6 +196,7 @@ function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
   const config = (data.config ?? {}) as Record<string, unknown>;
   const variant = String(config.variant ?? data.vizVariant ?? "revenue");
   const color = variantColor(variant);
+  const runtime = data.runtime;
 
   const panelStyle: React.CSSProperties = {
     background: "#161b22",
@@ -247,6 +248,9 @@ function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
           >
             {trend} {compareLabel}
           </div>
+          {runtime?.summary ? (
+            <div className="mt-2 text-[10px] leading-relaxed text-[#7d8590]">{runtime.summary}</div>
+          ) : null}
           <div className="mt-3">
             <Sparkline
               data={makeSeries(seed, 14, 10, 100)}
@@ -263,8 +267,13 @@ function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
   }
 
   if (data.nodeType === "viz_chart") {
-    const seriesA = makeSeries(seed, 14, 10, 100);
-    const seriesB = makeSeries(seed + 7, 14, 10, 100);
+    const configuredSeries = Array.isArray(config.series)
+      ? (config.series as Array<{ label?: string; value?: number }>).map((entry, index) =>
+          typeof entry.value === "number" ? entry.value : index + 1,
+        )
+      : [];
+    const seriesA = configuredSeries.length ? configuredSeries : makeSeries(seed, 14, 10, 100);
+    const seriesB = makeSeries(seed + 7, seriesA.length || 14, 10, 100);
     const chartType = String(config.chartType ?? data.chartType ?? "line");
     const timeRange = (config.timeRange as string) ?? "Last 14 days";
 
@@ -308,7 +317,10 @@ function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
       .map((column) => column.trim())
       .filter(Boolean);
     const maxRows = Number(config.maxRows ?? 3);
-    const rows =
+    const configuredRows = Array.isArray(config.rows)
+      ? (config.rows as Array<Record<string, unknown>>)
+      : null;
+    const fallbackRows =
       variant === "errors"
         ? [
             ["5xx Server", "23", "0.18%", "High"],
@@ -340,7 +352,12 @@ function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
             </tr>
           </thead>
           <tbody>
-            {rows.slice(0, Number.isNaN(maxRows) ? 3 : maxRows).map((row, rowIndex) => (
+            {(configuredRows
+              ? configuredRows
+                  .slice(0, Number.isNaN(maxRows) ? 3 : maxRows)
+                  .map((row) => columns.map((column) => String(row[column] ?? "")))
+              : fallbackRows.slice(0, Number.isNaN(maxRows) ? 3 : maxRows)
+            ).map((row, rowIndex) => (
               <tr
                 key={`${row[0]}-${rowIndex}`}
                 className={rowIndex % 2 === 0 ? "" : "bg-[#0d1117]"}
@@ -369,6 +386,15 @@ function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
     const insight =
       (config.insight as string) ??
       "Cart abandonment is down 3.2% since the checkout redesign. Consider extending the coupon campaign for another week.";
+    const reportItems =
+      Array.isArray(config.reportItems) && config.reportItems.length
+        ? (config.reportItems as Array<{
+            label: string;
+            value: string;
+            delta: string;
+            positive: boolean;
+          }>)
+        : reportRows;
 
     return (
       <div style={{ ...panelStyle, width: 300 }}>
@@ -379,7 +405,7 @@ function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
           <div className="text-[10px] uppercase tracking-[0.14em] text-[#7d8590]">
             {reportTitle}
           </div>
-          {reportRows.map((row) => (
+          {reportItems.map((row) => (
             <div
               key={row.label}
               className="flex items-center justify-between rounded border border-[#21262d] bg-[#0d1117] px-3 py-2"
@@ -412,16 +438,22 @@ function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
   }
 
   const random = seededRandom(seed);
+  const configuredStages =
+    Array.isArray(config.stages) && config.stages.length
+      ? (config.stages as Array<{ label: string; value: number }>)
+      : null;
   const stage1 = Math.floor(random() * 38000 + 18000);
   const stage2 = Math.floor(stage1 * (random() * 0.16 + 0.08));
   const stage3 = Math.floor(stage2 * (random() * 0.45 + 0.35));
   const stage4 = Math.floor(stage3 * (random() * 0.4 + 0.2));
-  const stages = [
-    { label: String(config.stage1Label ?? "Page View"), value: stage1 },
-    { label: String(config.stage2Label ?? "Sign Up"), value: stage2 },
-    { label: String(config.stage3Label ?? "Activated"), value: stage3 },
-    { label: String(config.stage4Label ?? "Paid"), value: stage4 },
-  ];
+  const stages =
+    configuredStages ??
+    [
+      { label: String(config.stage1Label ?? "Page View"), value: stage1 },
+      { label: String(config.stage2Label ?? "Sign Up"), value: stage2 },
+      { label: String(config.stage3Label ?? "Activated"), value: stage3 },
+      { label: String(config.stage4Label ?? "Paid"), value: stage4 },
+    ];
 
   return (
     <div style={{ ...panelStyle, width: 280 }}>

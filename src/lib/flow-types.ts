@@ -27,6 +27,14 @@ export interface NodeIOSchema {
   output?: JSONSchema;
 }
 
+export interface NodeRuntimeInfo {
+  status: "idle" | "running" | "success" | "error" | "skipped";
+  summary?: string;
+  error?: string;
+  lastRunAt?: number;
+  itemCount?: number;
+}
+
 export interface WorkflowNodeData extends Record<string, unknown> {
   label: string;
   nodeType: NodeTypeId;
@@ -49,6 +57,7 @@ export interface WorkflowNodeData extends Record<string, unknown> {
   strokeColor?: string;
   text?: string;
   widgets?: DashboardWidget[];
+  runtime?: NodeRuntimeInfo;
 }
 
 export type AppNode = Node<WorkflowNodeData>;

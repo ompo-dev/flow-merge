@@ -10,6 +10,7 @@ function ActionNodeComponent({ data, selected }: NodeProps<AppNode>) {
   const parameterCount = Object.keys(data.parameters ?? {}).filter(
     (key) => (data.parameters?.[key] ?? "").trim() !== "",
   ).length;
+  const runtime = data.runtime;
 
   return (
     <div>
@@ -27,7 +28,13 @@ function ActionNodeComponent({ data, selected }: NodeProps<AppNode>) {
           <div className="mt-2 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-[#3d444d]">
             <span>{parameterCount} params</span>
             {data.disabled ? <span>disabled</span> : null}
+            {runtime?.status && runtime.status !== "idle" ? <span>{runtime.status}</span> : null}
           </div>
+          {runtime?.summary ? (
+            <p className="mt-2 rounded border border-[#21262d] bg-[#0d1117] px-2 py-1 text-[10px] leading-relaxed text-[#7d8590]">
+              {runtime.summary}
+            </p>
+          ) : null}
           {data.notes ? (
             <p className="mt-2 border-t border-[#21262d] pt-2 text-[11px] italic text-[#3d444d]">
               {data.notes as string}

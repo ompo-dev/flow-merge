@@ -14,6 +14,13 @@ import { v4 as uuidv4 } from "uuid";
 import { createMockExecutions, createMockProjects, createMockWorkflows } from "@/lib/mock-data";
 import { getNodeMeta, type NodeTypeId } from "@/lib/node-catalog";
 import { getDefaultNodeConfig, getNodeSchema } from "@/lib/node-config";
+import { executeWorkflowRun } from "@/lib/runtime-engine";
+import {
+  getEmptyProjectStore,
+  getProjectRuntimeStore,
+  persistRuntimeStores,
+  readPersistedRuntimeStores,
+} from "@/lib/runtime-storage";
 import type {
   AiNodeSpec,
   AppNode,
@@ -22,11 +29,20 @@ import type {
   Execution,
   Project,
   GenerativeComponent,
+  NodeRuntimeInfo,
   RightClickContext,
   ToolMode,
   Workflow,
   WorkflowNodeData,
 } from "@/lib/flow-types";
+import type {
+  ProjectRuntimeStore,
+  RuntimeNodeSnapshot,
+  RuntimeWebhookDelivery,
+  RuntimeWebhookResponse,
+  WorkflowExecutionRequest,
+  WorkflowRunResult,
+} from "@/lib/runtime-types";
 
 const DEEPSEEK_STORAGE_KEY = "flow-merge-deepseek-key";
 const CHAT_THREADS_STORAGE_KEY = "flow-merge-chat-threads";
@@ -34,10 +50,23 @@ const CHAT_ACTIVE_ID_STORAGE_KEY = "flow-merge-active-chat-id";
 const CHAT_WELCOME_MESSAGE =
   "Eu posso montar workflows, criar dashboards e editar nos do canvas. Use Ctrl+click para mandar nos como contexto para a IA.";
 
+function toNodeRuntimeInfo(snapshot: RuntimeNodeSnapshot): NodeRuntimeInfo {
+  return {
+    status: snapshot.status,
+    summary: snapshot.summary,
+    error: snapshot.error,
+    lastRunAt: snapshot.completedAt,
+    itemCount: snapshot.itemCount,
+  };
+}
+
 interface FlowState {
   projects: Project[];
   workflows: Workflow[];
   executions: Execution[];
+  runtimeStores: Record<string, ProjectRuntimeStore>;
+  nodeRuntimeByWorkflow: Record<string, Record<string, RuntimeNodeSnapshot>>;
+  runtimeBaseUrl: string | null;
   activeProjectId: string;
   activeWorkflowId: string;
   selectedNodeId: string | null;
@@ -51,6 +80,7 @@ interface FlowState {
   activeChatId: string;
   deepseekKey: string;
 
+  setRuntimeBaseUrl: (url: string | null) => void;
   setActiveProject: (id: string) => void;
   createProject: (name?: string) => Project;
   deleteProject: (id: string) => void;
@@ -64,7 +94,12 @@ interface FlowState {
   deleteWorkflow: (id: string) => void;
   toggleWorkflowActive: (id: string) => void;
   saveWorkflow: () => void;
-  runWorkflow: () => void;
+  runWorkflow: (
+    request?: Partial<WorkflowExecutionRequest>,
+  ) => Promise<WorkflowRunResult | null>;
+  runWorkflowFromWebhook: (
+    delivery: RuntimeWebhookDelivery,
+  ) => Promise<RuntimeWebhookResponse | null>;
   exportWorkflowJson: () => string | null;
   importWorkflowJson: (raw: string) => { success: boolean; error?: string };
 
@@ -341,11 +376,15 @@ export function findFreePosition(
 const initialProjects = createMockProjects();
 const initialWorkflows = createMockWorkflows();
 const initialChatState = getInitialChatState();
+const initialRuntimeStores = readPersistedRuntimeStores();
 
 export const useFlowStore = create<FlowState>((set, get) => ({
   projects: initialProjects,
   workflows: initialWorkflows,
   executions: createMockExecutions(initialWorkflows),
+  runtimeStores: initialRuntimeStores,
+  nodeRuntimeByWorkflow: {},
+  runtimeBaseUrl: null,
   activeProjectId: initialWorkflows[0]?.projectId ?? initialProjects[0]?.id ?? "",
   activeWorkflowId: initialWorkflows[0]?.id ?? "",
   selectedNodeId: null,
@@ -358,6 +397,8 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   chatThreads: initialChatState.chatThreads,
   activeChatId: initialChatState.activeChatId,
   deepseekKey: getInitialDeepseekKey(),
+
+  setRuntimeBaseUrl: (url) => set({ runtimeBaseUrl: url }),
 
   setActiveProject: (id) =>
     set((state) => {
@@ -388,10 +429,15 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       active: true,
     };
     const workflow = buildDefaultWorkflow(project.id, `${project.name} Flow`, project.accent);
+    const nextRuntimeStores = {
+      ...get().runtimeStores,
+      [project.id]: getEmptyProjectStore(),
+    };
 
     set((state) => ({
       projects: [...state.projects, project],
       workflows: [...state.workflows, workflow],
+      runtimeStores: nextRuntimeStores,
       activeProjectId: project.id,
       activeWorkflowId: workflow.id,
       selectedNodeId: null,
@@ -399,6 +445,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       isAddNodePanelOpen: false,
       rightClickCtx: null,
     }));
+    persistRuntimeStores(nextRuntimeStores);
 
     return project;
   },
@@ -439,10 +486,14 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         nextProjectWorkflows[0]?.id ??
         remainingWorkflows[0]?.id ??
         "";
+      const nextRuntimeStores = { ...state.runtimeStores };
+      delete nextRuntimeStores[id];
+      persistRuntimeStores(nextRuntimeStores);
 
       return {
         projects: remainingProjects,
         workflows: remainingWorkflows,
+        runtimeStores: nextRuntimeStores,
         executions: state.executions.filter(
           (execution) => !removedWorkflowIds.has(execution.workflowId),
         ),
@@ -551,8 +602,11 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   deleteWorkflow: (id) =>
     set((state) => {
       const remaining = state.workflows.filter((workflow) => workflow.id !== id);
+      const nextNodeRuntimeByWorkflow = { ...state.nodeRuntimeByWorkflow };
+      delete nextNodeRuntimeByWorkflow[id];
       return {
         workflows: remaining,
+        nodeRuntimeByWorkflow: nextNodeRuntimeByWorkflow,
         activeWorkflowId:
           state.activeWorkflowId === id ? remaining[0]?.id ?? "" : state.activeWorkflowId,
         activeProjectId:
@@ -580,41 +634,174 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       ),
     })),
 
-  runWorkflow: () => {
+  runWorkflow: async (request = {}) => {
     const state = get();
     const workflow = getActiveWorkflowFromState(state);
     const project = getActiveProjectFromState(state);
-    if (!workflow || !project?.active) return;
+    if (!workflow || !project?.active) return null;
 
     const executionId = uuidv4();
-    set((state) => ({
+    const startedAt = Date.now();
+    const executionRequest: WorkflowExecutionRequest = {
+      source: request.source ?? "manual",
+      triggerNodeId: request.triggerNodeId,
+      payload: request.payload,
+      webhookDeliveryId: request.webhookDeliveryId ?? null,
+    };
+
+    set((current) => ({
       executions: [
         {
           id: executionId,
           workflowId: workflow.id,
           workflowName: workflow.name,
           status: "running",
-          startedAt: nowIso(),
+          startedAt: new Date(startedAt).toISOString(),
           itemsProcessed: 0,
         },
-        ...state.executions,
+        ...current.executions,
       ],
+      nodeRuntimeByWorkflow: {
+        ...current.nodeRuntimeByWorkflow,
+        [workflow.id]: workflow.nodes.reduce<Record<string, RuntimeNodeSnapshot>>(
+          (accumulator, node) => {
+            accumulator[node.id] = {
+              nodeId: node.id,
+              nodeType: node.data.nodeType,
+              status: "idle",
+            };
+            return accumulator;
+          },
+          {},
+        ),
+      },
     }));
 
-    window.setTimeout(() => {
-      set((state) => ({
-        executions: state.executions.map((execution) =>
+    try {
+      const result = await executeWorkflowRun({
+        project,
+        workflow,
+        request: executionRequest,
+        store: getProjectRuntimeStore(get().runtimeStores, project.id),
+        defaultAiApiKey: get().deepseekKey,
+        defaultAiBaseUrl: "https://api.deepseek.com/v1/chat/completions",
+      });
+
+      const nextRuntimeStores = {
+        ...get().runtimeStores,
+        [project.id]: result.updatedStore,
+      };
+      persistRuntimeStores(nextRuntimeStores);
+
+      set((current) => ({
+        runtimeStores: nextRuntimeStores,
+        nodeRuntimeByWorkflow: {
+          ...current.nodeRuntimeByWorkflow,
+          [workflow.id]: result.nodeSnapshots,
+        },
+        workflows: current.workflows.map((item) => {
+          if (item.id !== workflow.id) return item;
+
+          return {
+            ...item,
+            updatedAt: nowIso(),
+            nodes: item.nodes.map((node) => {
+              const patch = result.nodePatches.find((entry) => entry.nodeId === node.id)?.data;
+              const runtime = result.nodeSnapshots[node.id]
+                ? toNodeRuntimeInfo(result.nodeSnapshots[node.id])
+                : node.data.runtime;
+              const mergedData = patch
+                ? {
+                    ...node.data,
+                    ...patch,
+                    config: {
+                      ...(node.data.config ?? {}),
+                      ...(patch.config ?? {}),
+                    },
+                  }
+                : node.data;
+
+              return {
+                ...node,
+                data: {
+                  ...mergedData,
+                  runtime,
+                },
+              };
+            }),
+          };
+        }),
+        executions: current.executions.map((execution) =>
           execution.id === executionId
             ? {
                 ...execution,
-                status: Math.random() > 0.12 ? "success" : "error",
-                duration: 950 + Math.floor(Math.random() * 2500),
-                itemsProcessed: 80 + Math.floor(Math.random() * 1200),
+                status: result.executionStatus,
+                duration: Date.now() - startedAt,
+                itemsProcessed: result.itemsProcessed,
               }
             : execution,
         ),
       }));
-    }, 1400);
+
+      return result;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Workflow execution failed unexpectedly.";
+      set((current) => ({
+        executions: current.executions.map((execution) =>
+          execution.id === executionId
+            ? {
+                ...execution,
+                status: "error",
+                duration: Date.now() - startedAt,
+                itemsProcessed: 0,
+              }
+            : execution,
+        ),
+      }));
+      console.error("Workflow execution failed", message);
+      return null;
+    }
+  },
+
+  runWorkflowFromWebhook: async (delivery) => {
+    const workflow = get().workflows.find((item) => item.id === delivery.workflowId);
+    const project = get().projects.find((item) => item.id === workflow?.projectId);
+
+    if (!workflow || !project) {
+      return {
+        status: 404,
+        body: JSON.stringify({ error: "workflow_not_found" }),
+        headers: { "content-type": "application/json" },
+      };
+    }
+
+    const result = await get().runWorkflow({
+      source: "webhook",
+      triggerNodeId: delivery.nodeId,
+      payload:
+        delivery.bodyJson ??
+        ({
+          body: delivery.bodyText,
+          headers: delivery.headers,
+          query: delivery.query ?? {},
+          path: delivery.path,
+          method: delivery.method,
+        } satisfies Record<string, unknown>),
+      webhookDeliveryId: delivery.deliveryId,
+    });
+
+    return (
+      result?.response ?? {
+        status: 200,
+        body: JSON.stringify({
+          ok: true,
+          workflowId: workflow.id,
+          processed: result?.itemsProcessed ?? 0,
+        }),
+        headers: { "content-type": "application/json" },
+      }
+    );
   },
 
   exportWorkflowJson: () => {

@@ -6,6 +6,8 @@ import type { AppNode } from "@/lib/flow-types";
 import { NodeContainer, NodeHeader, StandardHandles } from "@/components/nodes/SharedNodeComponents";
 
 function TriggerNodeComponent({ data, selected }: NodeProps<AppNode>) {
+  const runtime = data.runtime;
+
   return (
     <div>
       <NodeContainer selected={selected} accentColor={(data.accent as string) ?? "#d29922"}>
@@ -19,6 +21,11 @@ function TriggerNodeComponent({ data, selected }: NodeProps<AppNode>) {
           <p className="text-xs leading-relaxed text-[#7d8590]">
             {data.description ?? "Fires workflow event"}
           </p>
+          {runtime?.summary ? (
+            <p className="mt-2 rounded border border-[#21262d] bg-[#0d1117] px-2 py-1 text-[10px] leading-relaxed text-[#7d8590]">
+              {runtime.summary}
+            </p>
+          ) : null}
           {data.notes ? (
             <p className="mt-2 border-t border-[#21262d] pt-2 text-[11px] italic text-[#3d444d]">
               {data.notes as string}

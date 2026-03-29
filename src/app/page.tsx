@@ -1,5 +1,5 @@
-import { CanvasEntry } from "@/components/canvas/CanvasEntry";
+import { FlowMergeShell } from "@/components/app/FlowMergeShell";
 
 export default function Home() {
-  return <CanvasEntry />;
+  return <FlowMergeShell />;
 }

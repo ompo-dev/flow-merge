@@ -5,6 +5,7 @@ import {
   Check,
   ChevronDown,
   Download,
+  LogOut,
   Plus,
   Play,
   Save,
@@ -13,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { useActiveProject, useActiveWorkflow, useFlowStore } from "@/store/useFlowStore";
+import { useAuthStore } from "@/store/useAuthStore";
 import type { Project, Workflow } from "@/lib/flow-types";
 
 function SettingsModal({ onClose }: { onClose: () => void }) {
@@ -22,6 +24,8 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
   const setDeepseekKey = useFlowStore((state) => state.setDeepseekKey);
   const updateProject = useFlowStore((state) => state.updateProject);
   const updateWorkflow = useFlowStore((state) => state.updateWorkflow);
+  const session = useAuthStore((state) => state.session);
+  const logout = useAuthStore((state) => state.logout);
   const [value, setValue] = useState(deepseekKey);
   const [projectName, setProjectName] = useState(activeProject?.name ?? "");
   const [projectAccent, setProjectAccent] = useState(activeProject?.accent ?? "#1f6feb");
@@ -108,6 +112,29 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
                 <span className="text-[11px] text-[#7d8590]">{workflowAccent}</span>
               </div>
             </div>
+          </div>
+        ) : null}
+
+        {session ? (
+          <div className="mt-4 space-y-3 border-t border-[#30363d] pt-4">
+            <div className="text-[10px] uppercase tracking-[0.14em] text-[#7d8590]">Local Session</div>
+            <div className="rounded-md border border-[#30363d] bg-[#0d1117] px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-[#7d8590]">Signed in as</div>
+              <div className="mt-1 text-xs font-medium text-[#e6edf3]">{session.email}</div>
+              <div className="mt-1 text-[11px] leading-relaxed text-[#7d8590]">
+                O acesso e local desta maquina. Ao sair, o canvas volta para a landing page segura.
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                logout();
+                onClose();
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-[#f8514933] px-3 py-2 text-xs font-medium text-[#f85149] transition-colors hover:bg-[#f8514910]"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Sign out
+            </button>
           </div>
         ) : null}
 
@@ -598,7 +625,9 @@ export function FloatingToolbar() {
         </button>
 
         <button
-          onClick={runWorkflow}
+          onClick={() => {
+            void runWorkflow();
+          }}
           disabled={!activeWorkflow || !activeProject?.active}
           className="flex items-center gap-2 border-r border-[#30363d] px-3 py-2 text-xs text-[#3fb950] transition-colors hover:bg-[#21262d] disabled:opacity-40"
         >
