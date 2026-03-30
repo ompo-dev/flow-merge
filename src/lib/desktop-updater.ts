@@ -56,6 +56,13 @@ export async function relaunchDesktopApp() {
   await relaunch();
 }
 
+export async function exitDesktopApp(exitCode = 0) {
+  if (!isDesktopRuntimeAvailable()) return;
+
+  const { exit } = await import("@tauri-apps/plugin-process");
+  await exit(exitCode);
+}
+
 export async function listenDesktopUpdaterEvents(
   handler: (payload: AppUpdateEvent) => void | Promise<void>,
 ) {

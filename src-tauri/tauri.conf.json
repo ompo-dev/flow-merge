@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Flow Merge",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "identifier": "com.flowmerge.desktop",
   "build": {
     "frontendDist": "../out",

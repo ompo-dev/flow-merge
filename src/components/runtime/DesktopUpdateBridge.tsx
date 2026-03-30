@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import {
+  exitDesktopApp,
   getDesktopUpdaterConfig,
   isDesktopUpdaterAvailable,
   listenDesktopUpdaterEvents,
@@ -72,7 +73,7 @@ export function DesktopUpdateBridge() {
   useEffect(() => {
     if (!isDesktopUpdaterAvailable()) return;
 
-    let applying = false;
+    let closing = false;
     let cleanup = () => {};
 
     const setup = async () => {
@@ -81,15 +82,20 @@ export function DesktopUpdateBridge() {
 
       cleanup = await currentWindow.onCloseRequested(async (event) => {
         const state = useFlowStore.getState();
-        if (applying || state.updater.updateState !== "ready_to_install") return;
+        if (closing) {
+          event.preventDefault();
+          return;
+        }
 
-        applying = true;
         event.preventDefault();
+        closing = true;
 
         try {
-          await state.installReadyUpdate({ relaunch: false });
+          if (state.updater.updateState === "ready_to_install") {
+            await state.installReadyUpdate({ relaunch: false });
+          }
         } finally {
-          await currentWindow.destroy();
+          await exitDesktopApp();
         }
       });
     };

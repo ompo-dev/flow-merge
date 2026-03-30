@@ -6,40 +6,18 @@ import {
   ChevronDown,
   Download,
   LoaderCircle,
-  LogOut,
   Plus,
   Play,
-  RefreshCw,
   Save,
   Settings,
   Upload,
   X,
 } from "lucide-react";
+import { SettingsModalView } from "@/components/canvas/SettingsModalView";
 import { useActiveProject, useActiveWorkflow, useFlowStore } from "@/store/useFlowStore";
-import { useAuthStore } from "@/store/useAuthStore";
-import type { AppUpdateState, Project, Workflow } from "@/lib/flow-types";
+import type { Project, Workflow } from "@/lib/flow-types";
 
-function describeUpdateState(state: AppUpdateState) {
-  switch (state) {
-    case "checking":
-      return "Verificando updates";
-    case "available":
-      return "Update disponivel";
-    case "downloading":
-      return "Baixando update";
-    case "ready_to_install":
-      return "Pronto para aplicar";
-    case "installing":
-      return "Aplicando update";
-    case "error":
-      return "Falha no update";
-    case "disabled":
-      return "Updater desativado";
-    default:
-      return "Atualizado";
-  }
-}
-
+/*
 function SettingsModal({ onClose }: { onClose: () => void }) {
   const activeProject = useActiveProject();
   const activeWorkflow = useActiveWorkflow();
@@ -328,6 +306,11 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
       </div>
     </div>
   );
+}
+*/
+
+function SettingsModal({ onClose }: { onClose: () => void }) {
+  return <SettingsModalView onClose={onClose} />;
 }
 
 function ImportJsonModal({ onClose }: { onClose: () => void }) {
