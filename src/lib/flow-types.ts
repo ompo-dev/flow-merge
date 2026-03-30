@@ -1,4 +1,4 @@
-import type { Edge, Node } from "@xyflow/react";
+import type { Edge, Node, XYPosition } from "@xyflow/react";
 import type { NodeTypeId } from "@/lib/node-catalog";
 
 export interface DashboardWidget {
@@ -13,6 +13,9 @@ export interface DashboardWidget {
 export interface JSONSchemaProperty {
   type: string;
   description?: string;
+  properties?: Record<string, JSONSchemaProperty>;
+  items?: JSONSchemaProperty;
+  required?: string[];
 }
 
 export interface JSONSchema {
@@ -33,6 +36,16 @@ export interface NodeRuntimeInfo {
   error?: string;
   lastRunAt?: number;
   itemCount?: number;
+  inputPreview?: unknown;
+  outputPreview?: unknown;
+}
+
+export type NodeProgrammingMode = "builtin" | "code";
+
+export interface NodeProgrammingConfig {
+  mode: NodeProgrammingMode;
+  code: string;
+  outputTemplate: string;
 }
 
 export interface WorkflowNodeData extends Record<string, unknown> {
@@ -58,6 +71,7 @@ export interface WorkflowNodeData extends Record<string, unknown> {
   text?: string;
   widgets?: DashboardWidget[];
   runtime?: NodeRuntimeInfo;
+  programmable?: NodeProgrammingConfig;
 }
 
 export type AppNode = Node<WorkflowNodeData>;
@@ -129,13 +143,24 @@ export interface ChatThread {
 }
 
 export interface AiNodeSpec {
+  alias?: string;
   nodeType: NodeTypeId;
   label?: string;
   description?: string;
   notes?: string;
-  parameters?: Record<string, string>;
+  parameters?: Record<string, unknown>;
+  config?: Record<string, unknown>;
+  programmable?: Partial<NodeProgrammingConfig>;
+  position?: XYPosition;
   chartType?: "line" | "bar" | "area";
   vizVariant?: "revenue" | "conversion" | "users" | "errors" | "aov" | "custom";
+}
+
+export interface AiWorkflowEdge {
+  source: string;
+  target: string;
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
 }
 
 export interface RightClickContext {

@@ -6,7 +6,16 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!.next", "!out", "!src-tauri/target", "!src-tauri/gen"]
+    "includes": [
+      "src/**",
+      "scripts/**",
+      "docs/**",
+      "*.json",
+      "*.ts",
+      "*.tsx",
+      "!src-tauri/target",
+      "!src-tauri/gen"
+    ]
   },
   "formatter": {
     "enabled": true,

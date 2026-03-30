@@ -15,43 +15,43 @@ export interface NodeConfigField {
 }
 
 const variantOptions: NodeConfigOption[] = [
-  { value: "revenue", label: "Revenue" },
-  { value: "conversion", label: "Conversion" },
-  { value: "users", label: "Users" },
-  { value: "errors", label: "Errors" },
+  { value: "revenue", label: "Receita" },
+  { value: "conversion", label: "Conversão" },
+  { value: "users", label: "Usuários" },
+  { value: "errors", label: "Erros" },
   { value: "aov", label: "AOV" },
-  { value: "custom", label: "Custom" },
+  { value: "custom", label: "Customizado" },
 ];
 
 const chartTypeOptions: NodeConfigOption[] = [
-  { value: "line", label: "Line" },
-  { value: "bar", label: "Bar" },
-  { value: "area", label: "Area" },
+  { value: "line", label: "Linha" },
+  { value: "bar", label: "Barras" },
+  { value: "area", label: "Área" },
 ];
 
 const refreshRateOptions: NodeConfigOption[] = [
-  { value: "Every 15m", label: "Every 15m" },
-  { value: "Every 1h", label: "Every 1h" },
-  { value: "Every 6h", label: "Every 6h" },
-  { value: "Daily", label: "Daily" },
+  { value: "Every 15m", label: "A cada 15 min" },
+  { value: "Every 1h", label: "A cada 1h" },
+  { value: "Every 6h", label: "A cada 6h" },
+  { value: "Daily", label: "Diário" },
 ];
 
 const timeRangeOptions: NodeConfigOption[] = [
-  { value: "Last 24 hours", label: "Last 24 hours" },
-  { value: "Last 7 days", label: "Last 7 days" },
-  { value: "Last 14 days", label: "Last 14 days" },
-  { value: "Last 30 days", label: "Last 30 days" },
+  { value: "Last 24 hours", label: "Últimas 24 horas" },
+  { value: "Last 7 days", label: "Últimos 7 dias" },
+  { value: "Last 14 days", label: "Últimos 14 dias" },
+  { value: "Last 30 days", label: "Últimos 30 dias" },
 ];
 
 const yesNoOptions: NodeConfigOption[] = [
-  { value: "Yes", label: "Yes" },
-  { value: "No", label: "No" },
+  { value: "Yes", label: "Sim" },
+  { value: "No", label: "Não" },
 ];
 
 const layoutOptions: NodeConfigOption[] = [
-  { value: "4 columns", label: "4 columns" },
-  { value: "6 columns", label: "6 columns" },
-  { value: "8 columns", label: "8 columns" },
+  { value: "4 columns", label: "4 colunas" },
+  { value: "6 columns", label: "6 colunas" },
+  { value: "8 columns", label: "8 colunas" },
 ];
 
 const triggerSchema: NodeIOSchema = {
@@ -155,39 +155,39 @@ const vizSchemas: Partial<Record<NodeTypeId, NodeIOSchema>> = {
 
 export const nodeConfigFields: Partial<Record<NodeTypeId, NodeConfigField[]>> = {
   viz_metric: [
-    { key: "variant", label: "Metric Type", type: "select", placeholder: "Revenue", options: variantOptions },
-    { key: "value", label: "Value", type: "text", placeholder: "$12,450" },
-    { key: "trend", label: "Trend", type: "text", placeholder: "+5.2%" },
-    { key: "compareLabel", label: "Compare Label", type: "text", placeholder: "vs last period" },
+    { key: "variant", label: "Tipo de Métrica", type: "select", placeholder: "Receita", options: variantOptions },
+    { key: "value", label: "Valor", type: "text", placeholder: "$12,450" },
+    { key: "trend", label: "Tendência", type: "text", placeholder: "+5.2%" },
+    { key: "compareLabel", label: "Rótulo de Comparação", type: "text", placeholder: "vs período anterior" },
   ],
   viz_chart: [
-    { key: "variant", label: "Dataset", type: "select", placeholder: "Revenue", options: variantOptions },
-    { key: "chartType", label: "Chart Type", type: "select", placeholder: "Line", options: chartTypeOptions },
-    { key: "timeRange", label: "Time Range", type: "select", placeholder: "Last 14 days", options: timeRangeOptions },
-    { key: "xAxisLabel", label: "X Axis Label", type: "text", placeholder: "Date" },
-    { key: "yAxisLabel", label: "Y Axis Label", type: "text", placeholder: "Value" },
+    { key: "variant", label: "Dataset", type: "select", placeholder: "Receita", options: variantOptions },
+    { key: "chartType", label: "Tipo de Gráfico", type: "select", placeholder: "Linha", options: chartTypeOptions },
+    { key: "timeRange", label: "Janela de Tempo", type: "select", placeholder: "Últimos 14 dias", options: timeRangeOptions },
+    { key: "xAxisLabel", label: "Rótulo do Eixo X", type: "text", placeholder: "Data" },
+    { key: "yAxisLabel", label: "Rótulo do Eixo Y", type: "text", placeholder: "Valor" },
   ],
   viz_table: [
-    { key: "variant", label: "Dataset", type: "select", placeholder: "Revenue", options: variantOptions },
-    { key: "columns", label: "Columns", type: "text", placeholder: "Name,Count,Value,Change" },
-    { key: "sortBy", label: "Sort By", type: "text", placeholder: "Value" },
-    { key: "maxRows", label: "Max Rows", type: "number", placeholder: "3" },
+    { key: "variant", label: "Dataset", type: "select", placeholder: "Receita", options: variantOptions },
+    { key: "columns", label: "Colunas", type: "text", placeholder: "Nome,Contagem,Valor,Variação" },
+    { key: "sortBy", label: "Ordenar por", type: "text", placeholder: "Valor" },
+    { key: "maxRows", label: "Máximo de Linhas", type: "number", placeholder: "3" },
   ],
   viz_report: [
-    { key: "reportTitle", label: "Report Title", type: "text", placeholder: "Weekly Summary" },
-    { key: "refreshRate", label: "Refresh Rate", type: "select", placeholder: "Every 1h", options: refreshRateOptions },
-    { key: "includeAiInsight", label: "Include AI Insight", type: "select", placeholder: "Yes", options: yesNoOptions },
-    { key: "insight", label: "Insight", type: "textarea", placeholder: "Summarize the main movement in this report..." },
+    { key: "reportTitle", label: "Título do Relatório", type: "text", placeholder: "Resumo semanal" },
+    { key: "refreshRate", label: "Frequência de Atualização", type: "select", placeholder: "A cada 1h", options: refreshRateOptions },
+    { key: "includeAiInsight", label: "Incluir Insight de IA", type: "select", placeholder: "Sim", options: yesNoOptions },
+    { key: "insight", label: "Insight", type: "textarea", placeholder: "Resuma o principal movimento deste relatório..." },
   ],
   viz_funnel: [
-    { key: "stage1Label", label: "Stage 1", type: "text", placeholder: "Page View" },
-    { key: "stage2Label", label: "Stage 2", type: "text", placeholder: "Sign Up" },
-    { key: "stage3Label", label: "Stage 3", type: "text", placeholder: "Activated" },
-    { key: "stage4Label", label: "Stage 4", type: "text", placeholder: "Paid" },
+    { key: "stage1Label", label: "Etapa 1", type: "text", placeholder: "Visualização de Página" },
+    { key: "stage2Label", label: "Etapa 2", type: "text", placeholder: "Cadastro" },
+    { key: "stage3Label", label: "Etapa 3", type: "text", placeholder: "Ativado" },
+    { key: "stage4Label", label: "Etapa 4", type: "text", placeholder: "Pago" },
   ],
   viz_dashboard: [
-    { key: "title", label: "Dashboard Title", type: "text", placeholder: "Operator Dashboard" },
-    { key: "layout", label: "Grid Layout", type: "select", placeholder: "6 columns", options: layoutOptions },
+    { key: "title", label: "Título do Dashboard", type: "text", placeholder: "Dashboard Operacional" },
+    { key: "layout", label: "Layout da Grade", type: "select", placeholder: "6 colunas", options: layoutOptions },
   ],
 };
 
@@ -258,34 +258,34 @@ export function getDefaultNodeConfig(
         variant,
         chartType,
         timeRange: "Last 14 days",
-        xAxisLabel: "Date",
-        yAxisLabel: variant === "revenue" ? "Revenue" : "Value",
+        xAxisLabel: "Data",
+        yAxisLabel: variant === "revenue" ? "Receita" : "Valor",
       };
     case "viz_table":
       return {
         variant,
-        columns: "Name,Count,Value,Change",
-        sortBy: "Value",
+        columns: "Nome,Contagem,Valor,Variação",
+        sortBy: "Valor",
         maxRows: "3",
       };
     case "viz_report":
       return {
-        reportTitle: label || "Weekly Summary",
+        reportTitle: label || "Resumo semanal",
         refreshRate: "Every 1h",
         includeAiInsight: "Yes",
         insight:
-          "Cart abandonment is down 3.2% since the checkout redesign. Consider extending the coupon campaign for another week.",
+          "O abandono de carrinho caiu 3,2% desde o redesign do checkout. Considere estender a campanha de cupom por mais uma semana.",
       };
     case "viz_funnel":
       return {
-        stage1Label: "Page View",
-        stage2Label: "Sign Up",
-        stage3Label: "Activated",
-        stage4Label: "Paid",
+        stage1Label: "Visualização de Página",
+        stage2Label: "Cadastro",
+        stage3Label: "Ativado",
+        stage4Label: "Pago",
       };
     case "viz_dashboard":
       return {
-        title: label || "Operator Dashboard",
+        title: label || "Dashboard Operacional",
         layout: "6 columns",
       };
     default:

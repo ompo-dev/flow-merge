@@ -41,10 +41,17 @@ export type FlowShellType =
   | "vizNode"
   | "dashboardNode";
 
+export interface NodeParameterOption {
+  value: string;
+  label: string;
+}
+
 export interface NodeParameterField {
   label: string;
   type: "text" | "number" | "textarea" | "select";
   placeholder: string;
+  helpText?: string;
+  options?: NodeParameterOption[];
 }
 
 export interface NodeCatalogItem {
@@ -66,6 +73,151 @@ export interface NodeCatalogItem {
   chartType?: "line" | "bar" | "area";
   vizVariant?: "revenue" | "conversion" | "users" | "errors" | "aov" | "custom";
 }
+
+const httpMethodOptions: NodeParameterOption[] = [
+  { value: "GET", label: "GET" },
+  { value: "POST", label: "POST" },
+  { value: "PUT", label: "PUT" },
+  { value: "PATCH", label: "PATCH" },
+  { value: "DELETE", label: "DELETE" },
+];
+
+const authOptions: NodeParameterOption[] = [
+  { value: "None", label: "Nenhuma" },
+  { value: "Bearer Token", label: "Token Bearer" },
+  { value: "Secret Token", label: "Token Secreto" },
+  { value: "Basic Auth", label: "Auth Básica" },
+];
+
+const scheduleOptions: NodeParameterOption[] = [
+  { value: "Every 5 minutes", label: "A cada 5 minutos" },
+  { value: "Every 15 minutes", label: "A cada 15 minutos" },
+  { value: "Every hour", label: "A cada hora" },
+  { value: "Every day", label: "Todo dia" },
+];
+
+const responseFormatOptions: NodeParameterOption[] = [
+  { value: "JSON", label: "JSON" },
+  { value: "Text", label: "Texto" },
+  { value: "Raw", label: "Bruto" },
+];
+
+const languageOptions: NodeParameterOption[] = [
+  { value: "JavaScript", label: "JavaScript" },
+];
+
+const compareOptions: NodeParameterOption[] = [
+  { value: "equals", label: "igual a" },
+  { value: "not equals", label: "diferente de" },
+  { value: "greater than", label: "maior que" },
+  { value: "greater or equal", label: "maior ou igual" },
+  { value: "less than", label: "menor que" },
+  { value: "less or equal", label: "menor ou igual" },
+  { value: "contains", label: "contém" },
+];
+
+const mergeModeOptions: NodeParameterOption[] = [
+  { value: "Merge by Field", label: "Unir por campo" },
+  { value: "Append Rows", label: "Anexar linhas" },
+  { value: "Keep First", label: "Manter primeiro" },
+];
+
+const notionOperationOptions: NodeParameterOption[] = [
+  { value: "Create", label: "Criar página" },
+  { value: "Update", label: "Atualizar página" },
+  { value: "Query", label: "Consultar base" },
+];
+
+const githubOperationOptions: NodeParameterOption[] = [
+  { value: "Get Pull Request", label: "Buscar pull request" },
+  { value: "Create Issue", label: "Criar issue" },
+  { value: "Create Comment", label: "Criar comentário" },
+];
+
+const openAiModelOptions: NodeParameterOption[] = [
+  { value: "gpt-4o-mini", label: "gpt-4o-mini" },
+  { value: "gpt-4.1-mini", label: "gpt-4.1-mini" },
+  { value: "deepseek-chat", label: "deepseek-chat" },
+];
+
+const filterRuleOptions: NodeParameterOption[] = compareOptions;
+
+const waitUnitOptions: NodeParameterOption[] = [
+  { value: "Seconds", label: "Segundos" },
+  { value: "Minutes", label: "Minutos" },
+  { value: "Hours", label: "Horas" },
+  { value: "Days", label: "Dias" },
+];
+
+const respondWithOptions: NodeParameterOption[] = [
+  { value: "JSON payload", label: "Payload JSON" },
+  { value: "Plain text", label: "Texto puro" },
+  { value: "Empty 204", label: "204 vazio" },
+];
+
+const aggregationOptions: NodeParameterOption[] = [
+  { value: "Sum", label: "Soma" },
+  { value: "Count", label: "Contagem" },
+  { value: "Average", label: "Média" },
+  { value: "Min", label: "Min" },
+  { value: "Max", label: "Max" },
+];
+
+const significanceOptions: NodeParameterOption[] = [
+  { value: "90%", label: "90%" },
+  { value: "95%", label: "95%" },
+  { value: "99%", label: "99%" },
+];
+
+const sourceOptions: NodeParameterOption[] = [
+  { value: "Data Store", label: "Data Store" },
+  { value: "Previous Node", label: "Node anterior" },
+  { value: "Webhook Body", label: "Corpo do Webhook" },
+];
+
+const errorLevelOptions: NodeParameterOption[] = [
+  { value: "ERROR + FATAL", label: "ERRO + FATAL" },
+  { value: "WARN + ERROR + FATAL", label: "WARN + ERRO + FATAL" },
+  { value: "All levels", label: "Todos os níveis" },
+];
+
+const alertChannelOptions: NodeParameterOption[] = [
+  { value: "Slack", label: "Slack" },
+  { value: "Email", label: "Email" },
+  { value: "Webhook", label: "Webhook" },
+];
+
+const revenueMetricOptions: NodeParameterOption[] = [
+  { value: "MRR", label: "MRR" },
+  { value: "ARR", label: "ARR" },
+  { value: "Revenue", label: "Receita" },
+  { value: "Average Order Value", label: "Ticket médio" },
+];
+
+const currencyOptions: NodeParameterOption[] = [
+  { value: "USD", label: "USD" },
+  { value: "BRL", label: "BRL" },
+  { value: "EUR", label: "EUR" },
+];
+
+const chartTypeOptions: NodeParameterOption[] = [
+  { value: "Line", label: "Linha" },
+  { value: "Bar", label: "Barras" },
+  { value: "Area", label: "Área" },
+];
+
+const refreshOptions: NodeParameterOption[] = [
+  { value: "Every 15m", label: "A cada 15 min" },
+  { value: "Every 1h", label: "A cada 1h" },
+  { value: "Every 6h", label: "A cada 6h" },
+  { value: "Daily", label: "Diário" },
+];
+
+const layoutOptions: NodeParameterOption[] = [
+  { value: "4 columns", label: "4 colunas" },
+  { value: "6 columns", label: "6 colunas" },
+  { value: "8 columns", label: "8 colunas" },
+];
 
 export const nodeCategories: Array<{
   id: string;
@@ -506,43 +658,184 @@ export const nodeCatalogMap: Record<NodeTypeId, NodeCatalogItem> = Object.fromEn
 
 export const parameterDefaults: Record<NodeTypeId, NodeParameterField[]> = {
   trigger_webhook: [
-    { label: "HTTP Method", type: "select", placeholder: "POST" },
-    { label: "Path", type: "text", placeholder: "/webhook/cart" },
-    { label: "Authentication", type: "select", placeholder: "None" },
-    { label: "Secret Token", type: "text", placeholder: "Optional shared secret" },
+    {
+      label: "HTTP Method",
+      type: "select",
+      placeholder: "POST",
+      helpText: "Como o seu app vai enviar eventos para este trigger.",
+      options: httpMethodOptions,
+    },
+    {
+      label: "Path",
+      type: "text",
+      placeholder: "/webhook/cart",
+      helpText: "Rota pública que o seu produto vai chamar.",
+    },
+    {
+      label: "Authentication",
+      type: "select",
+      placeholder: "Nenhuma",
+      helpText: "Proteja este webhook se ele for receber tráfego de produção.",
+      options: authOptions,
+    },
+    {
+      label: "Secret Token",
+      type: "text",
+      placeholder: "Segredo compartilhado opcional",
+      helpText: "Usado só quando a autenticação exigir um token.",
+    },
+    {
+      label: "Tag Field",
+      type: "text",
+      placeholder: "variant",
+      helpText: "Nome de campo opcional adicionado automaticamente aos eventos recebidos.",
+    },
+    {
+      label: "Tag Value",
+      type: "text",
+      placeholder: "variant_a",
+      helpText: "Valor opcional usado para marcar eventos desta origem.",
+    },
   ],
   trigger_schedule: [
-    { label: "Trigger Interval", type: "select", placeholder: "Every 5 minutes" },
-    { label: "Timezone", type: "text", placeholder: "UTC" },
+    {
+      label: "Trigger Interval",
+      type: "select",
+      placeholder: "A cada 5 minutos",
+      helpText: "Escolha com que frequência este workflow deve rodar automaticamente.",
+      options: scheduleOptions,
+    },
+    {
+      label: "Timezone",
+      type: "text",
+      placeholder: "UTC",
+      helpText: "Fuso horário usado para interpretar o agendamento.",
+    },
   ],
   trigger_manual: [],
   action_http: [
-    { label: "Method", type: "select", placeholder: "GET" },
-    { label: "URL", type: "text", placeholder: "https://api.example.com/data" },
-    { label: "Response Format", type: "select", placeholder: "JSON" },
+    {
+      label: "Method",
+      type: "select",
+      placeholder: "GET",
+      helpText: "Método HTTP usado para a chamada externa.",
+      options: httpMethodOptions,
+    },
+    {
+      label: "URL",
+      type: "text",
+      placeholder: "https://api.example.com/data",
+      helpText: "URL de destino que este node deve chamar.",
+    },
+    {
+      label: "Response Format",
+      type: "select",
+      placeholder: "JSON",
+      helpText: "Como a resposta deve ser interpretada antes de seguir no fluxo.",
+      options: responseFormatOptions,
+    },
   ],
   action_code: [
-    { label: "Language", type: "select", placeholder: "JavaScript" },
-    { label: "Code", type: "textarea", placeholder: "return items;" },
+    {
+      label: "Language",
+      type: "select",
+      placeholder: "JavaScript",
+      options: languageOptions,
+    },
+    {
+      label: "Code",
+      type: "textarea",
+      placeholder: "return items;",
+      helpText: "Só no modo avançado. Use o editor completo abaixo para lógica customizada.",
+    },
   ],
   action_set: [
-    { label: "Field Name", type: "text", placeholder: "revenue_delta" },
-    { label: "Field Value", type: "text", placeholder: "{{ $json.value }}" },
+    {
+      label: "Field Name",
+      type: "text",
+      placeholder: "revenue_delta",
+      helpText: "Nome do campo que você quer adicionar ou sobrescrever.",
+    },
+    {
+      label: "Field Value",
+      type: "text",
+      placeholder: "{{ $json.value }}",
+      helpText: "Valor fixo ou valor mapeado do payload de entrada.",
+    },
   ],
   action_if: [
-    { label: "Value 1", type: "text", placeholder: "{{ $json.status }}" },
-    { label: "Operation", type: "select", placeholder: "equals" },
-    { label: "Value 2", type: "text", placeholder: "active" },
+    {
+      label: "Value 1",
+      type: "text",
+      placeholder: "{{ $json.status }}",
+      helpText: "Lado esquerdo da comparação.",
+    },
+    {
+      label: "Operation",
+      type: "select",
+      placeholder: "igual a",
+      helpText: "Regra usada para comparar os dois valores.",
+      options: compareOptions,
+    },
+    {
+      label: "Value 2",
+      type: "text",
+      placeholder: "active",
+      helpText: "Valor esperado para a condição bater.",
+    },
   ],
   action_switch: [
-    { label: "Mode", type: "select", placeholder: "Rules" },
-    { label: "Value", type: "text", placeholder: "{{ $json.segment }}" },
+    {
+      label: "Value",
+      type: "text",
+      placeholder: "{{ $json.segment }}",
+      helpText: "Campo que decide qual saída será usada.",
+    },
+    {
+      label: "Operation",
+      type: "select",
+      placeholder: "igual a",
+      helpText: "Regra de comparação usada em todos os casos abaixo.",
+      options: compareOptions,
+    },
+    { label: "Case 1", type: "text", placeholder: "controle", helpText: "Primeira rota correspondente." },
+    {
+      label: "Case 2",
+      type: "text",
+      placeholder: "treatment_a",
+      helpText: "Segunda rota correspondente.",
+    },
+    {
+      label: "Case 3",
+      type: "text",
+      placeholder: "treatment_b",
+      helpText: "Terceira rota correspondente.",
+    },
+    { label: "Case 4", type: "text", placeholder: "fallback", helpText: "Quarta rota correspondente." },
   ],
   action_merge: [
-    { label: "Mode", type: "select", placeholder: "Merge by Field" },
-    { label: "Join Field", type: "text", placeholder: "user_id" },
+    {
+      label: "Mode",
+      type: "select",
+      placeholder: "Unir por campo",
+      helpText: "Escolha como múltiplas entradas devem ser combinadas.",
+      options: mergeModeOptions,
+    },
+    {
+      label: "Join Field",
+      type: "text",
+      placeholder: "user_id",
+      helpText: "Chave compartilhada usada ao unir por campo.",
+    },
   ],
-  action_split: [{ label: "Batch Size", type: "number", placeholder: "100" }],
+  action_split: [
+    {
+      label: "Batch Size",
+      type: "number",
+      placeholder: "100",
+      helpText: "Quantos itens devem seguir em cada lote.",
+    },
+  ],
   action_email: [
     { label: "API Key", type: "text", placeholder: "re_..." },
     { label: "From", type: "text", placeholder: "Flow Merge <alerts@company.com>" },
@@ -558,33 +851,63 @@ export const parameterDefaults: Record<NodeTypeId, NodeParameterField[]> = {
   action_notion: [
     { label: "Token", type: "text", placeholder: "secret_xxx" },
     { label: "Database ID", type: "text", placeholder: "notion-db-id" },
-    { label: "Operation", type: "select", placeholder: "Create" },
+    {
+      label: "Operation",
+      type: "select",
+      placeholder: "Create",
+      options: notionOperationOptions,
+    },
   ],
   action_github: [
     { label: "Token", type: "text", placeholder: "github_pat_xxx" },
     { label: "Owner", type: "text", placeholder: "acme" },
     { label: "Repository", type: "text", placeholder: "saas-app" },
-    { label: "Operation", type: "select", placeholder: "Get Pull Request" },
+    {
+      label: "Operation",
+      type: "select",
+      placeholder: "Buscar pull request",
+      options: githubOperationOptions,
+    },
   ],
   action_openai: [
     { label: "API Key", type: "text", placeholder: "sk-..." },
     { label: "API Base URL", type: "text", placeholder: "https://api.deepseek.com/v1/chat/completions" },
-    { label: "Model", type: "select", placeholder: "gpt-4o-mini" },
+    {
+      label: "Model",
+      type: "select",
+      placeholder: "gpt-4o-mini",
+      options: openAiModelOptions,
+    },
     { label: "Prompt", type: "textarea", placeholder: "Resuma as métricas do dia..." },
   ],
   action_function: [{ label: "Code", type: "textarea", placeholder: "return transform(input);" }],
   action_filter: [
     { label: "Field", type: "text", placeholder: "{{ $json.mrr }}" },
-    { label: "Rule", type: "select", placeholder: "greater than" },
+    {
+      label: "Rule",
+      type: "select",
+      placeholder: "maior que",
+      options: filterRuleOptions,
+    },
     { label: "Value", type: "text", placeholder: "1000" },
   ],
   action_wait: [
-    { label: "Unit", type: "select", placeholder: "Minutes" },
+    {
+      label: "Unit",
+      type: "select",
+      placeholder: "Minutos",
+      options: waitUnitOptions,
+    },
     { label: "Amount", type: "number", placeholder: "30" },
   ],
   action_respond: [
     { label: "Response Code", type: "number", placeholder: "200" },
-    { label: "Respond With", type: "select", placeholder: "JSON payload" },
+    {
+      label: "Respond With",
+      type: "select",
+      placeholder: "Payload JSON",
+      options: respondWithOptions,
+    },
   ],
   analytics_store: [
     { label: "Store Name", type: "text", placeholder: "events_store" },
@@ -592,7 +915,12 @@ export const parameterDefaults: Record<NodeTypeId, NodeParameterField[]> = {
   ],
   analytics_aggregate: [
     { label: "Group By", type: "text", placeholder: "{{ $json.date }}" },
-    { label: "Aggregation", type: "select", placeholder: "Sum" },
+    {
+      label: "Aggregation",
+      type: "select",
+      placeholder: "Soma",
+      options: aggregationOptions,
+    },
     { label: "Field", type: "text", placeholder: "{{ $json.amount }}" },
   ],
   analytics_compare: [
@@ -601,7 +929,16 @@ export const parameterDefaults: Record<NodeTypeId, NodeParameterField[]> = {
     { label: "Metric", type: "text", placeholder: "Conversion Rate" },
   ],
   analytics_ab: [
-    { label: "Significance", type: "select", placeholder: "95%" },
+    { label: "Store Names", type: "text", placeholder: "ab_variant_a,ab_variant_b" },
+    { label: "Variant Field", type: "text", placeholder: "variant" },
+    { label: "Conversion Field", type: "text", placeholder: "converted" },
+    { label: "Revenue Field", type: "text", placeholder: "amount" },
+    {
+      label: "Significance",
+      type: "select",
+      placeholder: "95%",
+      options: significanceOptions,
+    },
     { label: "Minimum Sample", type: "number", placeholder: "100" },
   ],
   analytics_funnel: [
@@ -614,28 +951,58 @@ export const parameterDefaults: Record<NodeTypeId, NodeParameterField[]> = {
     { label: "Values", type: "text", placeholder: "free,pro,enterprise" },
   ],
   analytics_enrich: [
-    { label: "Source", type: "select", placeholder: "Data Store" },
+    {
+      label: "Source",
+      type: "select",
+      placeholder: "Data Store",
+      options: sourceOptions,
+    },
     { label: "Join Field", type: "text", placeholder: "user_id" },
   ],
   monitor_error: [
-    { label: "Level Filter", type: "select", placeholder: "ERROR + FATAL" },
+    {
+      label: "Level Filter",
+      type: "select",
+      placeholder: "ERRO + FATAL",
+      options: errorLevelOptions,
+    },
     { label: "Pattern", type: "text", placeholder: "Exception|Timeout" },
   ],
   monitor_alert: [
     { label: "Threshold", type: "number", placeholder: "0.05" },
     { label: "Field", type: "text", placeholder: "{{ $json.error_rate }}" },
-    { label: "Channel", type: "select", placeholder: "Slack" },
+    {
+      label: "Channel",
+      type: "select",
+      placeholder: "Slack",
+      options: alertChannelOptions,
+    },
   ],
   monitor_revenue: [
-    { label: "Metric", type: "select", placeholder: "MRR" },
-    { label: "Currency", type: "select", placeholder: "USD" },
+    {
+      label: "Metric",
+      type: "select",
+      placeholder: "MRR",
+      options: revenueMetricOptions,
+    },
+    {
+      label: "Currency",
+      type: "select",
+      placeholder: "USD",
+      options: currencyOptions,
+    },
   ],
   viz_metric: [
     { label: "Metric Label", type: "text", placeholder: "MRR" },
     { label: "Data Field", type: "text", placeholder: "{{ $json.total }}" },
   ],
   viz_chart: [
-    { label: "Chart Type", type: "select", placeholder: "Line" },
+    {
+      label: "Chart Type",
+      type: "select",
+      placeholder: "Linha",
+      options: chartTypeOptions,
+    },
     { label: "X Axis", type: "text", placeholder: "{{ $json.date }}" },
     { label: "Y Axis", type: "text", placeholder: "{{ $json.value }}" },
   ],
@@ -645,7 +1012,12 @@ export const parameterDefaults: Record<NodeTypeId, NodeParameterField[]> = {
   ],
   viz_report: [
     { label: "Title", type: "text", placeholder: "Weekly Summary" },
-    { label: "Refresh", type: "select", placeholder: "Every 1h" },
+    {
+      label: "Refresh",
+      type: "select",
+      placeholder: "A cada 1h",
+      options: refreshOptions,
+    },
   ],
   viz_funnel: [
     { label: "Stage 1", type: "text", placeholder: "Page View" },
@@ -653,7 +1025,12 @@ export const parameterDefaults: Record<NodeTypeId, NodeParameterField[]> = {
     { label: "Stage 3", type: "text", placeholder: "Paid" },
   ],
   viz_dashboard: [
-    { label: "Layout", type: "select", placeholder: "6 columns" },
+    {
+      label: "Layout",
+      type: "select",
+      placeholder: "6 colunas",
+      options: layoutOptions,
+    },
     { label: "Title", type: "text", placeholder: "Growth Command Center" },
   ],
 };

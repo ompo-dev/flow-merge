@@ -7,9 +7,124 @@ export interface RuntimeItem {
   json: Record<string, unknown>;
 }
 
+export type RuntimeArtifactKind =
+  | "records"
+  | "table"
+  | "metric"
+  | "series"
+  | "comparison"
+  | "funnel"
+  | "report"
+  | "ai_summary"
+  | "alert";
+
+export interface RuntimeReportItem {
+  label: string;
+  value: string;
+  delta: string;
+  positive: boolean;
+}
+
+interface RuntimeArtifactBase {
+  kind: RuntimeArtifactKind;
+  label?: string;
+}
+
+export interface RuntimeRecordsArtifact extends RuntimeArtifactBase {
+  kind: "records";
+  rows: Record<string, unknown>[];
+  rowCount: number;
+}
+
+export interface RuntimeTableArtifact extends RuntimeArtifactBase {
+  kind: "table";
+  columns: string[];
+  rows: Record<string, unknown>[];
+  rowCount: number;
+}
+
+export interface RuntimeMetricArtifact extends RuntimeArtifactBase {
+  kind: "metric";
+  value: string;
+  rawValue?: number | string;
+  trend?: string;
+  compareLabel?: string;
+}
+
+export interface RuntimeSeriesArtifact extends RuntimeArtifactBase {
+  kind: "series";
+  chartType: "line" | "bar" | "area";
+  series: Array<{
+    label: string;
+    value: number;
+  }>;
+}
+
+export interface RuntimeComparisonArtifact extends RuntimeArtifactBase {
+  kind: "comparison";
+  metric: string;
+  total: number;
+  delta: number;
+  sourceCount: number;
+  leader?: string;
+  leaderValue?: number;
+  sources: Array<{
+    key: string;
+    label: string;
+    storeName?: string;
+    value: number;
+    count: number;
+    share: number;
+  }>;
+}
+
+export interface RuntimeFunnelArtifact extends RuntimeArtifactBase {
+  kind: "funnel";
+  stages: Array<{
+    label: string;
+    value: number;
+  }>;
+}
+
+export interface RuntimeReportArtifact extends RuntimeArtifactBase {
+  kind: "report";
+  insight?: string;
+  reportItems: RuntimeReportItem[];
+}
+
+export interface RuntimeAiSummaryArtifact extends RuntimeArtifactBase {
+  kind: "ai_summary";
+  summary: string;
+  model: string;
+  status: number;
+  sourceRows?: Record<string, unknown>[];
+  columns?: string[];
+  reportItems?: RuntimeReportItem[];
+}
+
+export interface RuntimeAlertArtifact extends RuntimeArtifactBase {
+  kind: "alert";
+  triggered: boolean;
+  threshold: number;
+  matches: number;
+  channel: string;
+}
+
+export type RuntimeArtifact =
+  | RuntimeRecordsArtifact
+  | RuntimeTableArtifact
+  | RuntimeMetricArtifact
+  | RuntimeSeriesArtifact
+  | RuntimeComparisonArtifact
+  | RuntimeFunnelArtifact
+  | RuntimeReportArtifact
+  | RuntimeAiSummaryArtifact
+  | RuntimeAlertArtifact;
+
 export interface RuntimeEnvelope {
   items: RuntimeItem[];
   meta: Record<string, unknown>;
+  artifacts: RuntimeArtifact[];
 }
 
 export interface RuntimeCollectionRecord {
@@ -67,6 +182,7 @@ export interface RuntimeNodeSnapshot {
   itemCount?: number;
   summary?: string;
   error?: string;
+  inputPreview?: unknown;
   outputPreview?: unknown;
 }
 

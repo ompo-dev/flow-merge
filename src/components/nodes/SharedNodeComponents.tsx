@@ -72,6 +72,19 @@ export const ICONS: Record<string, LucideIcon> = {
   Scale,
 };
 
+export function coerceTextValue(value: unknown, fallback = "") {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (value === null || value === undefined) return fallback;
+
+  try {
+    const serialized = JSON.stringify(value);
+    return serialized === undefined ? fallback : serialized;
+  } catch {
+    return fallback;
+  }
+}
+
 export function IconBlock({
   iconName,
   accent,
@@ -79,7 +92,8 @@ export function IconBlock({
   iconName?: string;
   accent: string;
 }) {
-  const Icon = iconName ? ICONS[iconName] ?? Activity : Activity;
+  const resolvedIconName = typeof iconName === "string" ? iconName : undefined;
+  const Icon = resolvedIconName ? ICONS[resolvedIconName] ?? Activity : Activity;
   return (
     <div
       className="flex h-8 w-8 items-center justify-center rounded-md border"
@@ -135,7 +149,7 @@ export function NodeHeader({
         <IconBlock iconName={iconName} accent={accent} />
         <div className="min-w-0">
           <div className="truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-[#e6edf3]">
-            {label}
+            {coerceTextValue(label, "Untitled node")}
           </div>
         </div>
       </div>
@@ -144,7 +158,7 @@ export function NodeHeader({
           className="rounded px-1.5 py-0.5 text-[9px] font-medium"
           style={{ background: `${accent}18`, color: accent }}
         >
-          {badge}
+          {coerceTextValue(badge)}
         </span>
       ) : null}
     </div>

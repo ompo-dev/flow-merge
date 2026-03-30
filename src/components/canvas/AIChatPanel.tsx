@@ -11,6 +11,7 @@ import {
   Send,
   X,
 } from "lucide-react";
+import type { AIResponse, NodeCommand } from "@/lib/deepseek";
 import { streamDeepSeek } from "@/lib/deepseek";
 import { GenerativeUIRenderer } from "@/components/canvas/GenerativeUIRenderer";
 import { ICONS } from "@/components/nodes/SharedNodeComponents";
@@ -26,6 +27,46 @@ function getDisplayContent(content: string) {
   } catch {
     return content;
   }
+}
+
+function normalizeNodeRef(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function buildNodeReferenceMap(existingNodes: AppNode[], createdNodes: AppNode[], response: AIResponse) {
+  const references = new Map<string, string>();
+
+  [...existingNodes, ...createdNodes].forEach((node) => {
+    references.set(node.id, node.id);
+    references.set(normalizeNodeRef(node.id), node.id);
+    references.set(normalizeNodeRef(String(node.data.label)), node.id);
+  });
+
+  response.nodes?.forEach((spec, index) => {
+    const createdNode = createdNodes[index];
+    if (!createdNode) return;
+    if (spec.alias) {
+      references.set(normalizeNodeRef(spec.alias), createdNode.id);
+    }
+  });
+
+  return references;
+}
+
+function resolveNodeReference(referenceMap: Map<string, string>, reference?: string) {
+  if (!reference) return null;
+  return referenceMap.get(reference) ?? referenceMap.get(normalizeNodeRef(reference)) ?? null;
+}
+
+function extractEdgeCommands(commands?: NodeCommand[]) {
+  return (commands ?? [])
+    .filter((command) => command.command === "create_edge" && command.source && command.target)
+    .map((command) => ({
+      source: command.source!,
+      target: command.target!,
+      sourceHandle: command.sourceHandle ?? null,
+      targetHandle: command.targetHandle ?? null,
+    }));
 }
 
 export function AIChatPanel() {
@@ -106,12 +147,48 @@ export function AIChatPanel() {
       value,
       history,
       contextNodes,
+      activeWorkflow,
       (chunk) => appendStreamChunk(threadId, chunk),
       (parsed) => {
         resolveAssistantMessage(threadId, parsed.message, (parsed.ui as GenerativeComponent[]) ?? []);
 
+        let createdNodes: AppNode[] = [];
         if (parsed.nodes?.length) {
-          const createdNodes = addAiNodes(parsed.nodes);
+          createdNodes = addAiNodes(parsed.nodes);
+        }
+
+        const referenceMap = buildNodeReferenceMap(nodes, createdNodes, parsed);
+        const explicitEdges = [...(parsed.edges ?? []), ...extractEdgeCommands(parsed.commands)];
+
+        parsed.commands?.forEach((command) => {
+          if (command.command === "update_node" && command.nodeId && command.data) {
+            const resolvedNodeId = resolveNodeReference(referenceMap, command.nodeId);
+            if (resolvedNodeId) {
+              updateNodeData(resolvedNodeId, command.data);
+            }
+          }
+          if (command.command === "delete_node" && command.nodeId) {
+            const resolvedNodeId = resolveNodeReference(referenceMap, command.nodeId);
+            if (resolvedNodeId) {
+              deleteNode(resolvedNodeId);
+            }
+          }
+        });
+
+        if (explicitEdges.length) {
+          explicitEdges.forEach((edge) => {
+            const source = resolveNodeReference(referenceMap, edge.source);
+            const target = resolveNodeReference(referenceMap, edge.target);
+            if (!source || !target || source === target) return;
+
+            onConnect({
+              source,
+              target,
+              sourceHandle: edge.sourceHandle ?? null,
+              targetHandle: edge.targetHandle ?? null,
+            });
+          });
+        } else if (createdNodes.length) {
           createdNodes.forEach((node, index) => {
             if (index === 0) return;
             onConnect({
@@ -122,23 +199,6 @@ export function AIChatPanel() {
             });
           });
         }
-
-        parsed.commands?.forEach((command) => {
-          if (command.command === "update_node" && command.nodeId && command.data) {
-            updateNodeData(command.nodeId, command.data);
-          }
-          if (command.command === "delete_node" && command.nodeId) {
-            deleteNode(command.nodeId);
-          }
-          if (command.command === "create_edge" && command.source && command.target) {
-            onConnect({
-              source: command.source,
-              target: command.target,
-              sourceHandle: null,
-              targetHandle: null,
-            });
-          }
-        });
       },
       (error) => {
         failAssistantMessage(threadId, error);

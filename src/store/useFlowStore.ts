@@ -14,7 +14,9 @@ import { v4 as uuidv4 } from "uuid";
 import { createMockExecutions, createMockProjects, createMockWorkflows } from "@/lib/mock-data";
 import { getNodeMeta, type NodeTypeId } from "@/lib/node-catalog";
 import { getDefaultNodeConfig, getNodeSchema } from "@/lib/node-config";
+import { getDefaultProgrammableConfig } from "@/lib/node-programming";
 import { executeWorkflowRun } from "@/lib/runtime-engine";
+import { applyWorkflowIntelligence } from "@/lib/workflow-intelligence";
 import {
   getEmptyProjectStore,
   getProjectRuntimeStore,
@@ -57,6 +59,8 @@ function toNodeRuntimeInfo(snapshot: RuntimeNodeSnapshot): NodeRuntimeInfo {
     error: snapshot.error,
     lastRunAt: snapshot.completedAt,
     itemCount: snapshot.itemCount,
+    inputPreview: snapshot.inputPreview,
+    outputPreview: snapshot.outputPreview,
   };
 }
 
@@ -124,6 +128,7 @@ interface FlowState {
     nodeType: NodeTypeId,
     position?: XYPosition,
     overrides?: Partial<WorkflowNodeData>,
+    preservePosition?: boolean,
   ) => AppNode;
   addAiNodes: (nodes: AiNodeSpec[]) => AppNode[];
   duplicateNode: (id: string) => void;
@@ -283,6 +288,219 @@ function updateChatThreads(
   return changed ? nextThreads : chatThreads;
 }
 
+function stringifyAiValue(value: unknown) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    if (value.every((entry) => typeof entry === "string" || typeof entry === "number")) {
+      return value.join(",");
+    }
+    return JSON.stringify(value);
+  }
+  if (value === null || value === undefined) return "";
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
+}
+
+function describeStoreError(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return "Workflow execution failed unexpectedly.";
+    }
+  }
+  return "Workflow execution failed unexpectedly.";
+}
+
+function syncWorkflow(workflow: Workflow) {
+  return applyWorkflowIntelligence(workflow);
+}
+
+function updateWorkflowById(
+  workflows: Workflow[],
+  workflowId: string,
+  updater: (workflow: Workflow) => Workflow,
+) {
+  return workflows.map((workflow) =>
+    workflow.id === workflowId ? syncWorkflow(updater(workflow)) : workflow,
+  );
+}
+
+function normalizeAiParameters(
+  nodeType: NodeTypeId,
+  rawParameters?: Record<string, unknown>,
+) {
+  const parameters = rawParameters ?? {};
+  const entries = Object.entries(parameters);
+  const normalizedLookup = new Map(
+    entries.map(([key, value]) => [key.trim().toLowerCase(), value]),
+  );
+  const read = (...keys: string[]) => {
+    for (const key of keys) {
+      const value = normalizedLookup.get(key.trim().toLowerCase());
+      if (value !== undefined) return stringifyAiValue(value);
+    }
+    return "";
+  };
+
+  switch (nodeType) {
+    case "trigger_webhook": {
+      return Object.fromEntries(
+        [
+          ["Path", read("path", "webhook path", "route")],
+          ["HTTP Method", read("http method", "method")],
+          ["Authentication", read("authentication", "auth")],
+          ["Secret Token", read("secret token", "secret")],
+          ["Tag Field", read("tag field", "tagfield")],
+          ["Tag Value", read("tag value", "tagvalue", "variant tag")],
+        ].filter(([, value]) => value !== ""),
+      );
+    }
+    case "action_set": {
+      const fieldName = read("field name", "field", "name");
+      const fieldValue = read("field value", "value");
+      if (fieldName || fieldValue) {
+        return Object.fromEntries(
+          [
+            ["Field Name", fieldName],
+            ["Field Value", fieldValue],
+          ].filter(([, value]) => value !== ""),
+        );
+      }
+
+      if (entries.length === 1) {
+        const [firstKey, firstValue] = entries[0];
+        return {
+          "Field Name": firstKey.trim().replace(/\s+/g, "_").toLowerCase(),
+          "Field Value": stringifyAiValue(firstValue),
+        };
+      }
+
+      return {};
+    }
+    case "analytics_store": {
+      return Object.fromEntries(
+        [["Store Name", read("store name", "store", "collection")]].filter(
+          ([, value]) => value !== "",
+        ),
+      );
+    }
+    case "analytics_ab": {
+      return Object.fromEntries(
+        [
+          ["Store Names", read("store names", "stores", "store name")],
+          ["Variant Field", read("variant field", "variantfield", "variant")],
+          ["Conversion Field", read("conversion field", "conversionfield", "converted field")],
+          ["Revenue Field", read("revenue field", "revenuefield", "amount field")],
+          ["Minimum Sample", read("minimum sample", "minimumsample", "sample")],
+          ["Significance", read("significance")],
+        ].filter(([, value]) => value !== ""),
+      );
+    }
+    case "analytics_compare": {
+      return Object.fromEntries(
+        [
+          ["Input A Label", read("input a label", "inputa label", "label a", "source a")],
+          ["Input B Label", read("input b label", "inputb label", "label b", "source b")],
+          ["Metric", read("metric", "compare metric", "measurement")],
+        ].filter(([, value]) => value !== ""),
+      );
+    }
+    case "action_if": {
+      return Object.fromEntries(
+        [
+          ["Value 1", read("value 1", "value1", "left", "field")],
+          ["Operation", read("operation", "rule", "operator")],
+          ["Value 2", read("value 2", "value2", "right", "expected")],
+        ].filter(([, value]) => value !== ""),
+      );
+    }
+    case "monitor_alert": {
+      return Object.fromEntries(
+        [
+          ["Threshold", read("threshold", "limit")],
+          ["Field", read("field", "metric field", "value field")],
+          ["Channel", read("channel", "destination")],
+        ].filter(([, value]) => value !== ""),
+      );
+    }
+    default: {
+      return Object.fromEntries(
+        entries.map(([key, value]) => [key, stringifyAiValue(value)]),
+      );
+    }
+  }
+}
+
+function normalizeAiConfig(
+  nodeType: NodeTypeId,
+  rawConfig?: Record<string, unknown>,
+  rawParameters?: Record<string, unknown>,
+) {
+  const config = { ...(rawConfig ?? {}) };
+
+  if (nodeType === "viz_table") {
+    const parameterColumns = rawParameters?.Columns ?? rawParameters?.columns;
+    if (config.columns === undefined && parameterColumns !== undefined) {
+      config.columns = Array.isArray(parameterColumns)
+        ? parameterColumns.map((value) => stringifyAiValue(value)).join(",")
+        : stringifyAiValue(parameterColumns);
+    }
+    const maxRows = rawParameters?.["Max Rows"] ?? rawParameters?.maxRows;
+    if (config.maxRows === undefined && maxRows !== undefined) {
+      config.maxRows = stringifyAiValue(maxRows);
+    }
+  }
+
+  if (nodeType === "viz_funnel") {
+    const steps = rawParameters?.Steps ?? rawParameters?.steps;
+    if (Array.isArray(steps)) {
+      const labels = steps.map((step) => stringifyAiValue(step)).filter(Boolean);
+      if (labels[0]) config.stage1Label = labels[0];
+      if (labels[1]) config.stage2Label = labels[1];
+      if (labels[2]) config.stage3Label = labels[2];
+      if (labels[3]) config.stage4Label = labels[3];
+    }
+  }
+
+  return config;
+}
+
+function normalizeAiNodeOverrides(spec: AiNodeSpec): Partial<WorkflowNodeData> {
+  const parameters = normalizeAiParameters(spec.nodeType, spec.parameters);
+  const config = normalizeAiConfig(spec.nodeType, spec.config, spec.parameters);
+  const programmable = spec.programmable
+    ? {
+        ...getDefaultProgrammableConfig(spec.nodeType),
+        ...(spec.programmable.mode ? { mode: spec.programmable.mode } : {}),
+        ...(typeof spec.programmable.code === "string"
+          ? { code: spec.programmable.code }
+          : {}),
+        ...(typeof spec.programmable.outputTemplate === "string"
+          ? { outputTemplate: spec.programmable.outputTemplate }
+          : {}),
+      }
+    : undefined;
+
+  return {
+    label: spec.label,
+    description: spec.description,
+    notes: spec.notes,
+    chartType: spec.chartType,
+    vizVariant: spec.vizVariant,
+    programmable,
+    parameters,
+    config,
+  };
+}
+
 function buildCatalogNode(
   nodeType: NodeTypeId,
   position: XYPosition,
@@ -323,6 +541,7 @@ function buildCatalogNode(
               { id: "w3", type: "table", x: 0, y: 2, w: 3, h: 3 },
             ]
           : undefined,
+      programmable: overrides.programmable ?? getDefaultProgrammableConfig(nodeType),
       ...overrides,
       parameters: { ...overrides.parameters },
       config: { ...defaultConfig, ...overrides.config },
@@ -374,7 +593,7 @@ export function findFreePosition(
 }
 
 const initialProjects = createMockProjects();
-const initialWorkflows = createMockWorkflows();
+const initialWorkflows = createMockWorkflows().map(syncWorkflow);
 const initialChatState = getInitialChatState();
 const initialRuntimeStores = readPersistedRuntimeStores();
 
@@ -428,7 +647,9 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       accent: PROJECT_ACCENTS[(projectCount - 1) % PROJECT_ACCENTS.length],
       active: true,
     };
-    const workflow = buildDefaultWorkflow(project.id, `${project.name} Flow`, project.accent);
+    const workflow = syncWorkflow(
+      buildDefaultWorkflow(project.id, `${project.name} Flow`, project.accent),
+    );
     const nextRuntimeStores = {
       ...get().runtimeStores,
       [project.id]: getEmptyProjectStore(),
@@ -464,10 +685,12 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
       if (!remainingWorkflows.length && remainingProjects[0]) {
         remainingWorkflows = [
-          buildDefaultWorkflow(
-            remainingProjects[0].id,
-            `${remainingProjects[0].name} Flow`,
-            remainingProjects[0].accent,
+          syncWorkflow(
+            buildDefaultWorkflow(
+              remainingProjects[0].id,
+              `${remainingProjects[0].name} Flow`,
+              remainingProjects[0].accent,
+            ),
           ),
         ];
       }
@@ -544,19 +767,21 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
   updateWorkflow: (id, data) =>
     set((state) => ({
-      workflows: state.workflows.map((workflow) =>
-        workflow.id === id
-          ? { ...workflow, ...data, updatedAt: nowIso() }
-          : workflow,
-      ),
+      workflows: updateWorkflowById(state.workflows, id, (workflow) => ({
+        ...workflow,
+        ...data,
+        updatedAt: nowIso(),
+      })),
     })),
 
   createWorkflow: (name) => {
     const activeProject = getActiveProjectFromState(get());
-    const workflow = buildDefaultWorkflow(
-      get().activeProjectId,
-      name || "New Workflow",
-      activeProject?.accent,
+    const workflow = syncWorkflow(
+      buildDefaultWorkflow(
+        get().activeProjectId,
+        name || "New Workflow",
+        activeProject?.accent,
+      ),
     );
     set((state) => ({ workflows: [...state.workflows, workflow] }));
     return workflow;
@@ -596,7 +821,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         edges,
       };
 
-      return { workflows: [...state.workflows, copy] };
+      return { workflows: [...state.workflows, syncWorkflow(copy)] };
     }),
 
   deleteWorkflow: (id) =>
@@ -636,7 +861,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
   runWorkflow: async (request = {}) => {
     const state = get();
-    const workflow = getActiveWorkflowFromState(state);
+    const workflow = syncWorkflow(getActiveWorkflowFromState(state));
     const project = getActiveProjectFromState(state);
     if (!workflow || !project?.active) return null;
 
@@ -699,38 +924,34 @@ export const useFlowStore = create<FlowState>((set, get) => ({
           ...current.nodeRuntimeByWorkflow,
           [workflow.id]: result.nodeSnapshots,
         },
-        workflows: current.workflows.map((item) => {
-          if (item.id !== workflow.id) return item;
+        workflows: updateWorkflowById(current.workflows, workflow.id, (item) => ({
+          ...item,
+          updatedAt: nowIso(),
+          nodes: item.nodes.map((node) => {
+            const patch = result.nodePatches.find((entry) => entry.nodeId === node.id)?.data;
+            const runtime = result.nodeSnapshots[node.id]
+              ? toNodeRuntimeInfo(result.nodeSnapshots[node.id])
+              : node.data.runtime;
+            const mergedData = patch
+              ? {
+                  ...node.data,
+                  ...patch,
+                  config: {
+                    ...(node.data.config ?? {}),
+                    ...(patch.config ?? {}),
+                  },
+                }
+              : node.data;
 
-          return {
-            ...item,
-            updatedAt: nowIso(),
-            nodes: item.nodes.map((node) => {
-              const patch = result.nodePatches.find((entry) => entry.nodeId === node.id)?.data;
-              const runtime = result.nodeSnapshots[node.id]
-                ? toNodeRuntimeInfo(result.nodeSnapshots[node.id])
-                : node.data.runtime;
-              const mergedData = patch
-                ? {
-                    ...node.data,
-                    ...patch,
-                    config: {
-                      ...(node.data.config ?? {}),
-                      ...(patch.config ?? {}),
-                    },
-                  }
-                : node.data;
-
-              return {
-                ...node,
-                data: {
-                  ...mergedData,
-                  runtime,
-                },
-              };
-            }),
-          };
-        }),
+            return {
+              ...node,
+              data: {
+                ...mergedData,
+                runtime,
+              },
+            };
+          }),
+        })),
         executions: current.executions.map((execution) =>
           execution.id === executionId
             ? {
@@ -745,8 +966,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
       return result;
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Workflow execution failed unexpectedly.";
+      const message = describeStoreError(error);
       set((current) => ({
         executions: current.executions.map((execution) =>
           execution.id === executionId
@@ -765,7 +985,8 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   },
 
   runWorkflowFromWebhook: async (delivery) => {
-    const workflow = get().workflows.find((item) => item.id === delivery.workflowId);
+    const rawWorkflow = get().workflows.find((item) => item.id === delivery.workflowId);
+    const workflow = rawWorkflow ? syncWorkflow(rawWorkflow) : undefined;
     const project = get().projects.find((item) => item.id === workflow?.projectId);
 
     if (!workflow || !project) {
@@ -805,7 +1026,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   },
 
   exportWorkflowJson: () => {
-    const workflow = getActiveWorkflowFromState(get());
+    const workflow = syncWorkflow(getActiveWorkflowFromState(get()));
     return workflow ? JSON.stringify(workflow, null, 2) : null;
   },
 
@@ -817,19 +1038,19 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       const parsed = JSON.parse(trimmed) as Partial<Workflow>;
 
       set((state) => ({
-        workflows: state.workflows.map((workflow) =>
-          workflow.id === state.activeWorkflowId
-            ? {
-                ...workflow,
-                name: parsed.name ?? workflow.name,
-                accent: parsed.accent ?? workflow.accent,
-                description: parsed.description ?? workflow.description,
-                tags: Array.isArray(parsed.tags) ? parsed.tags : workflow.tags,
-                nodes: Array.isArray(parsed.nodes) ? parsed.nodes : workflow.nodes,
-                edges: Array.isArray(parsed.edges) ? parsed.edges : workflow.edges,
-                updatedAt: nowIso(),
-              }
-            : workflow,
+        workflows: updateWorkflowById(
+          state.workflows,
+          state.activeWorkflowId,
+          (workflow) => ({
+            ...workflow,
+            name: parsed.name ?? workflow.name,
+            accent: parsed.accent ?? workflow.accent,
+            description: parsed.description ?? workflow.description,
+            tags: Array.isArray(parsed.tags) ? parsed.tags : workflow.tags,
+            nodes: Array.isArray(parsed.nodes) ? parsed.nodes : workflow.nodes,
+            edges: Array.isArray(parsed.edges) ? parsed.edges : workflow.edges,
+            updatedAt: nowIso(),
+          }),
         ),
       }));
 
@@ -912,24 +1133,20 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
   onNodesChange: (changes) =>
     set((state) => ({
-      workflows: state.workflows.map((workflow) =>
-        workflow.id === state.activeWorkflowId
-          ? {
-              ...workflow,
-              nodes: applyNodeChanges(changes, workflow.nodes) as AppNode[],
-              updatedAt: nowIso(),
-            }
-          : workflow,
-      ),
+      workflows: updateWorkflowById(state.workflows, state.activeWorkflowId, (workflow) => ({
+        ...workflow,
+        nodes: applyNodeChanges(changes, workflow.nodes) as AppNode[],
+        updatedAt: nowIso(),
+      })),
     })),
 
   onEdgesChange: (changes) =>
     set((state) => ({
-      workflows: state.workflows.map((workflow) =>
-        workflow.id === state.activeWorkflowId
-          ? { ...workflow, edges: applyEdgeChanges(changes, workflow.edges), updatedAt: nowIso() }
-          : workflow,
-      ),
+      workflows: updateWorkflowById(state.workflows, state.activeWorkflowId, (workflow) => ({
+        ...workflow,
+        edges: applyEdgeChanges(changes, workflow.edges),
+        updatedAt: nowIso(),
+      })),
     })),
 
   onConnect: (connection) =>
@@ -948,35 +1165,39 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       );
 
       return {
-        workflows: state.workflows.map((item) =>
-          item.id === workflow.id ? { ...item, edges: nextEdges, updatedAt: nowIso() } : item,
-        ),
+        workflows: updateWorkflowById(state.workflows, workflow.id, (item) => ({
+          ...item,
+          edges: nextEdges,
+          updatedAt: nowIso(),
+        })),
       };
     }),
 
   addNode: (node) =>
     set((state) => ({
-      workflows: state.workflows.map((workflow) =>
-        workflow.id === state.activeWorkflowId
-          ? { ...workflow, nodes: [...workflow.nodes, node], updatedAt: nowIso() }
-          : workflow,
-      ),
+      workflows: updateWorkflowById(state.workflows, state.activeWorkflowId, (workflow) => ({
+        ...workflow,
+        nodes: [...workflow.nodes, node],
+        updatedAt: nowIso(),
+      })),
     })),
 
-  addCatalogNode: (nodeType, position, overrides = {}) => {
+  addCatalogNode: (nodeType, position, overrides = {}, preservePosition = false) => {
     const workflow = getActiveWorkflowFromState(get());
-    const freePosition = position
-      ? findFreePosition(workflow.nodes, position.x, position.y)
+    const nextPosition = position
+      ? preservePosition
+        ? position
+        : findFreePosition(workflow.nodes, position.x, position.y)
       : findFreePosition(workflow.nodes, 360, 220);
 
-    const node = buildCatalogNode(nodeType, freePosition, overrides);
+    const node = buildCatalogNode(nodeType, nextPosition, overrides);
 
     set((state) => ({
-      workflows: state.workflows.map((item) =>
-        item.id === state.activeWorkflowId
-          ? { ...item, nodes: [...item.nodes, node], updatedAt: nowIso() }
-          : item,
-      ),
+      workflows: updateWorkflowById(state.workflows, state.activeWorkflowId, (item) => ({
+        ...item,
+        nodes: [...item.nodes, node],
+        updatedAt: nowIso(),
+      })),
       isAddNodePanelOpen: false,
       rightClickCtx: null,
     }));
@@ -988,14 +1209,15 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     nodes.map((spec, index) =>
       get().addCatalogNode(
         spec.nodeType,
-        { x: 260 + index * 280, y: 220 + (index % 2) * 140 },
-        spec as unknown as Partial<WorkflowNodeData>,
+        spec.position ?? { x: 260 + index * 280, y: 220 + (index % 2) * 140 },
+        normalizeAiNodeOverrides(spec),
+        Boolean(spec.position),
       ),
     ),
 
   duplicateNode: (id) =>
     set((state) => ({
-      workflows: state.workflows.map((workflow) => {
+      workflows: updateWorkflowById(state.workflows, state.activeWorkflowId, (workflow) => {
         if (workflow.id !== state.activeWorkflowId) return workflow;
         const node = workflow.nodes.find((item) => item.id === id);
         if (!node) return workflow;
@@ -1012,101 +1234,81 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
   updateNodeData: (id, data) =>
     set((state) => ({
-      workflows: state.workflows.map((workflow) =>
-        workflow.id === state.activeWorkflowId
-          ? {
-              ...workflow,
-              nodes: workflow.nodes.map((node) =>
-                node.id === id ? { ...node, data: { ...node.data, ...data } } : node,
-              ),
-              updatedAt: nowIso(),
-            }
-          : workflow,
-      ),
+      workflows: updateWorkflowById(state.workflows, state.activeWorkflowId, (workflow) => ({
+        ...workflow,
+        nodes: workflow.nodes.map((node) =>
+          node.id === id ? { ...node, data: { ...node.data, ...data } } : node,
+        ),
+        updatedAt: nowIso(),
+      })),
     })),
 
   updateNodeConfig: (id, config) =>
     set((state) => ({
-      workflows: state.workflows.map((workflow) =>
-        workflow.id === state.activeWorkflowId
-          ? {
-              ...workflow,
-              nodes: workflow.nodes.map((node) =>
-                node.id === id
-                  ? {
-                      ...node,
-                      data: {
-                        ...node.data,
-                        config: {
-                          ...(node.data.config ?? {}),
-                          ...config,
-                        },
-                      },
-                    }
-                  : node,
-              ),
-              updatedAt: nowIso(),
-            }
-          : workflow,
-      ),
+      workflows: updateWorkflowById(state.workflows, state.activeWorkflowId, (workflow) => ({
+        ...workflow,
+        nodes: workflow.nodes.map((node) =>
+          node.id === id
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  config: {
+                    ...(node.data.config ?? {}),
+                    ...config,
+                  },
+                },
+              }
+            : node,
+        ),
+        updatedAt: nowIso(),
+      })),
     })),
 
   updateNodeParameters: (id, field, value) =>
     set((state) => ({
-      workflows: state.workflows.map((workflow) =>
-        workflow.id === state.activeWorkflowId
-          ? {
-              ...workflow,
-              nodes: workflow.nodes.map((node) =>
-                node.id === id
-                  ? {
-                      ...node,
-                      data: {
-                        ...node.data,
-                        parameters: {
-                          ...(node.data.parameters ?? {}),
-                          [field]: value,
-                        },
-                      },
-                    }
-                  : node,
-              ),
-              updatedAt: nowIso(),
-            }
-          : workflow,
-      ),
+      workflows: updateWorkflowById(state.workflows, state.activeWorkflowId, (workflow) => ({
+        ...workflow,
+        nodes: workflow.nodes.map((node) =>
+          node.id === id
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  parameters: {
+                    ...(node.data.parameters ?? {}),
+                    [field]: value,
+                  },
+                },
+              }
+            : node,
+        ),
+        updatedAt: nowIso(),
+      })),
     })),
 
   deleteNode: (id) =>
     set((state) => ({
-      workflows: state.workflows.map((workflow) =>
-        workflow.id === state.activeWorkflowId
-          ? {
-              ...workflow,
-              nodes: workflow.nodes.filter((node) => node.id !== id),
-              edges: workflow.edges.filter((edge) => edge.source !== id && edge.target !== id),
-              updatedAt: nowIso(),
-            }
-          : workflow,
-      ),
+      workflows: updateWorkflowById(state.workflows, state.activeWorkflowId, (workflow) => ({
+        ...workflow,
+        nodes: workflow.nodes.filter((node) => node.id !== id),
+        edges: workflow.edges.filter((edge) => edge.source !== id && edge.target !== id),
+        updatedAt: nowIso(),
+      })),
       selectedNodeId: state.selectedNodeId === id ? null : state.selectedNodeId,
       contextNodeIds: state.contextNodeIds.filter((item) => item !== id),
     })),
 
   deleteNodes: (ids) =>
     set((state) => ({
-      workflows: state.workflows.map((workflow) =>
-        workflow.id === state.activeWorkflowId
-          ? {
-              ...workflow,
-              nodes: workflow.nodes.filter((node) => !ids.includes(node.id)),
-              edges: workflow.edges.filter(
-                (edge) => !ids.includes(edge.source) && !ids.includes(edge.target),
-              ),
-              updatedAt: nowIso(),
-            }
-          : workflow,
-      ),
+      workflows: updateWorkflowById(state.workflows, state.activeWorkflowId, (workflow) => ({
+        ...workflow,
+        nodes: workflow.nodes.filter((node) => !ids.includes(node.id)),
+        edges: workflow.edges.filter(
+          (edge) => !ids.includes(edge.source) && !ids.includes(edge.target),
+        ),
+        updatedAt: nowIso(),
+      })),
       selectedNodeId:
         state.selectedNodeId && ids.includes(state.selectedNodeId) ? null : state.selectedNodeId,
       contextNodeIds: state.contextNodeIds.filter((item) => !ids.includes(item)),

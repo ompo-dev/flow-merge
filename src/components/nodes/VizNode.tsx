@@ -1,8 +1,11 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { AppNode } from "@/lib/flow-types";
+import { coerceTextValue } from "@/components/nodes/SharedNodeComponents";
+import { getNodeSemanticState } from "@/lib/workflow-intelligence";
+import { useActiveWorkflow } from "@/store/useFlowStore";
 
 function seededRandom(seed: number) {
   let value = seed;
@@ -64,35 +67,134 @@ function Sparkline({
   );
 }
 
-function BarChart({
-  data,
-  color,
-  height = 80,
-  width = 280,
+type ChartSeriesEntry = {
+  label: string;
+  value: number;
+};
+
+const BAR_PALETTE = [
+  "#3fb950",
+  "#1f6feb",
+  "#d29922",
+  "#f85149",
+  "#a371f7",
+  "#58a6ff",
+];
+
+function formatChartPercent(value: number) {
+  return `${value.toFixed(value >= 10 ? 1 : 2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1")}%`;
+}
+
+function formatChartNumber(value: number) {
+  if (Math.abs(value) >= 1000) {
+    return value.toLocaleString();
+  }
+
+  return value.toFixed(value % 1 === 0 ? 0 : 2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+}
+
+function inferChartValueMode(variant: string, yAxisLabel: string) {
+  const normalizedAxis = yAxisLabel.trim().toLowerCase();
+
+  if (variant === "conversion" || normalizedAxis.includes("%") || normalizedAxis.includes("percent")) {
+    return "percent" as const;
+  }
+
+  if (
+    variant === "revenue" ||
+    normalizedAxis.includes("revenue") ||
+    normalizedAxis.includes("receita") ||
+    normalizedAxis.includes("currency") ||
+    normalizedAxis.includes("money")
+  ) {
+    return "currency" as const;
+  }
+
+  return "number" as const;
+}
+
+function formatChartValue(value: number, mode: "percent" | "currency" | "number") {
+  if (mode === "percent") return formatChartPercent(value);
+  if (mode === "currency") return `$${formatChartNumber(value)}`;
+  return formatChartNumber(value);
+}
+
+function getSeriesColor(index: number, fallback: string) {
+  return BAR_PALETTE[index] ?? fallback;
+}
+
+function ComparisonBarChart({
+  series,
+  fallbackColor,
+  valueMode,
+  height = 120,
+  width = 292,
 }: {
-  data: number[];
-  color: string;
+  series: ChartSeriesEntry[];
+  fallbackColor: string;
+  valueMode: "percent" | "currency" | "number";
   height?: number;
   width?: number;
 }) {
-  const max = Math.max(...data);
-  const barWidth = width / data.length - 3;
+  const safeSeries = series.length ? series : [{ label: "Item 1", value: 0 }];
+  const max = Math.max(...safeSeries.map((entry) => entry.value), 1);
+  const gap = 10;
+  const sidePadding = 10;
+  const innerWidth = width - sidePadding * 2;
+  const slotWidth = innerWidth / safeSeries.length;
+  const barWidth = Math.max(16, Math.min(slotWidth - gap, 40));
+  const usableHeight = height - 26;
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} style={{ width, height }}>
-      {data.map((value, index) => {
-        const barHeight = (value / max) * (height - 4);
+      <line
+        x1={sidePadding}
+        y1={height - 18}
+        x2={width - sidePadding}
+        y2={height - 18}
+        stroke="#30363d"
+        strokeWidth={1}
+      />
+      {safeSeries.map((entry, index) => {
+        const ratio = Math.max(0, entry.value) / max;
+        const barHeight = Math.max(6, ratio * usableHeight);
+        const x = sidePadding + index * slotWidth + (slotWidth - barWidth) / 2;
+        const y = height - 18 - barHeight;
+        const entryColor = getSeriesColor(index, fallbackColor);
+        const shortLabel =
+          entry.label.length > 10 ? `${entry.label.slice(0, 9)}…` : entry.label;
+
         return (
-          <rect
-            key={`${value}-${index}`}
-            x={index * (barWidth + 3)}
-            y={height - barHeight - 2}
-            width={barWidth}
-            height={barHeight}
-            fill={color}
-            fillOpacity={0.7}
-            rx={2}
-          />
+          <g key={`${entry.label}-${index}`}>
+            <text
+              x={x + barWidth / 2}
+              y={Math.max(12, y - 6)}
+              fill="#e6edf3"
+              fontSize="10"
+              fontWeight="600"
+              textAnchor="middle"
+            >
+              {formatChartValue(entry.value, valueMode)}
+            </text>
+            <rect
+              x={x}
+              y={y}
+              width={barWidth}
+              height={barHeight}
+              fill={entryColor}
+              fillOpacity={0.82}
+              rx={4}
+            />
+            <text
+              x={x + barWidth / 2}
+              y={height - 4}
+              fill="#7d8590"
+              fontSize="9"
+              textAnchor="middle"
+            >
+              {shortLabel}
+            </text>
+          </g>
         );
       })}
     </svg>
@@ -191,7 +293,27 @@ function variantColor(variant: string) {
   return "#1f6feb";
 }
 
+function estimateTableColumnWidths(columns: string[], rows: string[][]) {
+  return columns.map((column, columnIndex) => {
+    const longestCell = rows.reduce((maxLength, row) => {
+      const cell = String(row[columnIndex] ?? "");
+      return Math.max(maxLength, cell.length);
+    }, column.length);
+
+    return Math.min(Math.max(longestCell * 7 + 34, 120), 420);
+  });
+}
+
+function estimateTableWidth(columnWidths: number[]) {
+  return Math.max(360, columnWidths.reduce((total, width) => total + width, 0) + 2);
+}
+
 function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
+  const activeWorkflow = useActiveWorkflow();
+  const semanticState = useMemo(
+    () => (activeWorkflow ? getNodeSemanticState(activeWorkflow, id) : null),
+    [activeWorkflow, id],
+  );
   const seed = hashString(id);
   const config = (data.config ?? {}) as Record<string, unknown>;
   const variant = String(config.variant ?? data.vizVariant ?? "revenue");
@@ -204,14 +326,16 @@ function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
     borderRadius: 10,
     overflow: "hidden",
     cursor: "pointer",
-    opacity: data.disabled ? 0.45 : 1,
+    opacity: data.disabled || semanticState?.autoBlocked ? 0.45 : 1,
   };
 
   const header = (
     <div className="flex items-center justify-between border-b border-[#21262d] px-3 py-2">
-      <span className="text-xs font-semibold text-[#e6edf3]">{data.label}</span>
+      <span className="text-xs font-semibold text-[#e6edf3]">
+        {coerceTextValue(data.label, "Untitled node")}
+      </span>
       <span className="text-[10px] font-medium uppercase tracking-[0.14em]" style={{ color }}>
-        live
+        {data.disabled ? "off" : semanticState?.autoBlocked ? "bloq" : "ativo"}
       </span>
     </div>
   );
@@ -228,9 +352,9 @@ function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
       variant === "errors"
         ? `-${(random() * 0.5 + 0.1).toFixed(2)}%`
         : `+${(random() * 8 + 1.5).toFixed(1)}%`;
-    const value = (config.value as string) ?? fallbackValue;
-    const trend = (config.trend as string) ?? fallbackTrend;
-    const compareLabel = (config.compareLabel as string) ?? "vs last period";
+    const value = coerceTextValue(config.value, fallbackValue);
+    const trend = coerceTextValue(config.trend, fallbackTrend);
+    const compareLabel = coerceTextValue(config.compareLabel, "vs last period");
 
     return (
       <div style={{ ...panelStyle, width: 220 }}>
@@ -268,14 +392,31 @@ function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
 
   if (data.nodeType === "viz_chart") {
     const configuredSeries = Array.isArray(config.series)
-      ? (config.series as Array<{ label?: string; value?: number }>).map((entry, index) =>
-          typeof entry.value === "number" ? entry.value : index + 1,
-        )
+      ? (config.series as Array<{ label?: string; value?: number }>)
+          .map((entry, index) => ({
+            label:
+              typeof entry.label === "string" && entry.label.trim()
+                ? entry.label.trim()
+                : `Item ${index + 1}`,
+            value: typeof entry.value === "number" ? entry.value : index + 1,
+          }))
+          .filter((entry) => Number.isFinite(entry.value))
       : [];
-    const seriesA = configuredSeries.length ? configuredSeries : makeSeries(seed, 14, 10, 100);
+    const defaultSeries: ChartSeriesEntry[] = [
+      { label: "Variant A", value: 4.2 },
+      { label: "Variant B", value: 5.8 },
+      { label: "Variant C", value: 3.9 },
+    ];
+    const barSeries = configuredSeries.length ? configuredSeries : defaultSeries;
+    const seriesA = configuredSeries.length
+      ? configuredSeries.map((entry) => entry.value)
+      : makeSeries(seed, 14, 10, 100);
     const seriesB = makeSeries(seed + 7, seriesA.length || 14, 10, 100);
     const chartType = String(config.chartType ?? data.chartType ?? "line");
-    const timeRange = (config.timeRange as string) ?? "Last 14 days";
+    const timeRange = coerceTextValue(config.timeRange, "Last 14 days");
+    const xAxisLabel = coerceTextValue(config.xAxisLabel, chartType === "bar" ? "Items" : "Date");
+    const yAxisLabel = coerceTextValue(config.yAxisLabel, "Value");
+    const valueMode = inferChartValueMode(variant, yAxisLabel);
 
     return (
       <div style={{ ...panelStyle, width: 320 }}>
@@ -284,9 +425,36 @@ function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
         {header}
         <div className="px-3 py-3">
           {chartType === "bar" ? (
-            <div className="grid grid-cols-2 gap-2">
-              <BarChart data={seriesA} color="#1f6feb" width={136} height={72} />
-              <BarChart data={seriesB} color="#3fb950" width={136} height={72} />
+            <div>
+              <ComparisonBarChart
+                series={barSeries}
+                fallbackColor={color}
+                valueMode={valueMode}
+                width={292}
+                height={120}
+              />
+              <div className="mt-3 space-y-2">
+                {barSeries.map((entry, index) => {
+                  const entryColor = getSeriesColor(index, color);
+                  return (
+                    <div
+                      key={`${entry.label}-${index}`}
+                      className="flex items-center justify-between rounded border border-[#21262d] bg-[#0d1117] px-3 py-2"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ background: entryColor }}
+                        />
+                        <span className="truncate text-[11px] text-[#e6edf3]">{entry.label}</span>
+                      </div>
+                      <span className="text-[11px] font-medium text-[#7ee787]">
+                        {formatChartValue(entry.value, valueMode)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           ) : chartType === "area" ? (
             <AreaChart
@@ -301,8 +469,8 @@ function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
             <AreaChart dataA={seriesA} colorA={color} width={292} height={86} />
           )}
           <div className="mt-2 flex justify-between text-[10px] text-[#7d8590]">
-            <span>{timeRange}</span>
-            <span>today</span>
+            <span>{chartType === "bar" ? `${barSeries.length} item(s)` : timeRange}</span>
+            <span>{chartType === "bar" ? yAxisLabel : xAxisLabel}</span>
           </div>
         </div>
         <Handle id="right-source" type="source" position={Position.Right} />
@@ -332,19 +500,32 @@ function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
             ["Starter", "3,891", "$19,455", "+4.1%"],
             ["Enterprise", "83", "$83,000", "+28.6%"],
           ];
+    const tableRows = (
+      configuredRows
+        ? configuredRows
+            .slice(0, Number.isNaN(maxRows) ? 3 : maxRows)
+            .map((row) => columns.map((column) => String(row[column] ?? "")))
+        : fallbackRows.slice(0, Number.isNaN(maxRows) ? 3 : maxRows)
+    ) as string[][];
+    const columnWidths = estimateTableColumnWidths(columns, tableRows);
+    const tableWidth = estimateTableWidth(columnWidths);
 
     return (
-      <div style={{ ...panelStyle, width: 340 }}>
+      <div style={{ ...panelStyle, width: tableWidth, maxWidth: "none" }}>
         <Handle id="left-target" type="target" position={Position.Left} />
         <Handle id="top-target" type="target" position={Position.Top} />
         {header}
-        <table className="w-full border-collapse text-left text-[11px]">
+        <table
+          className="border-collapse text-left text-[11px]"
+          style={{ width: tableWidth, tableLayout: "auto" }}
+        >
           <thead>
             <tr className="border-b border-[#21262d]">
-              {columns.map((column) => (
+              {columns.map((column, columnIndex) => (
                 <th
                   key={column}
                   className="px-3 py-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#7d8590]"
+                  style={{ minWidth: columnWidths[columnIndex] }}
                 >
                   {column}
                 </th>
@@ -352,12 +533,7 @@ function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
             </tr>
           </thead>
           <tbody>
-            {(configuredRows
-              ? configuredRows
-                  .slice(0, Number.isNaN(maxRows) ? 3 : maxRows)
-                  .map((row) => columns.map((column) => String(row[column] ?? "")))
-              : fallbackRows.slice(0, Number.isNaN(maxRows) ? 3 : maxRows)
-            ).map((row, rowIndex) => (
+            {tableRows.map((row, rowIndex) => (
               <tr
                 key={`${row[0]}-${rowIndex}`}
                 className={rowIndex % 2 === 0 ? "" : "bg-[#0d1117]"}
@@ -366,6 +542,7 @@ function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
                   <td
                     key={`${column}-${cellIndex}`}
                     className="px-3 py-2 text-[#e6edf3]"
+                    style={{ minWidth: columnWidths[cellIndex] }}
                   >
                     {row[cellIndex] ?? ""}
                   </td>
@@ -381,11 +558,12 @@ function VizNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
   }
 
   if (data.nodeType === "viz_report") {
-    const reportTitle = (config.reportTitle as string) ?? data.label;
+    const reportTitle = coerceTextValue(config.reportTitle, coerceTextValue(data.label, "Report"));
     const includeAiInsight = String(config.includeAiInsight ?? "Yes") !== "No";
-    const insight =
-      (config.insight as string) ??
-      "Cart abandonment is down 3.2% since the checkout redesign. Consider extending the coupon campaign for another week.";
+    const insight = coerceTextValue(
+      config.insight,
+      "Cart abandonment is down 3.2% since the checkout redesign. Consider extending the coupon campaign for another week.",
+    );
     const reportItems =
       Array.isArray(config.reportItems) && config.reportItems.length
         ? (config.reportItems as Array<{

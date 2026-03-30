@@ -6,6 +6,7 @@ import { GridStack } from "gridstack";
 import { BarChart3, Plus, Table, TrendingUp, Type, X } from "lucide-react";
 import { useFlowStore } from "@/store/useFlowStore";
 import type { AppNode, DashboardWidget } from "@/lib/flow-types";
+import { coerceTextValue } from "@/components/nodes/SharedNodeComponents";
 
 const widgetTemplates: Array<{
   type: DashboardWidget["type"];
@@ -155,7 +156,7 @@ export default function DashboardNode({ id, data, selected }: NodeProps<AppNode>
         <div className="flex items-center gap-2">
           <BarChart3 className="h-4 w-4 text-[#3fb950]" />
           <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#e6edf3]">
-            {data.label}
+            {coerceTextValue(data.label, "Dashboard")}
           </span>
         </div>
         <div className="relative">

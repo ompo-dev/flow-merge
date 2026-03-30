@@ -40,7 +40,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className="h-full">
-      <body className="min-h-full bg-background text-foreground antialiased">
+      <body
+        suppressHydrationWarning
+        className="min-h-full bg-background text-foreground antialiased"
+      >
         {children}
       </body>
     </html>
