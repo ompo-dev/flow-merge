@@ -1,6 +1,7 @@
 "use client";
 
-import { memo, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { memo, useState, type ReactNode } from "react";
+import Image from "next/image";
 import type { NodeProps } from "@xyflow/react";
 import {
   ArrowRight,
@@ -21,8 +22,6 @@ import {
 } from "@/components/nodes/SharedNodeComponents";
 import type { AppNode } from "@/lib/flow-types";
 import { useAuthStore } from "@/store/useAuthStore";
-
-type AuthMode = "login" | "register";
 
 interface LandingItem {
   title: string;
@@ -127,6 +126,15 @@ function LandingHeader({
 
 function LandingLead({ children }: { children: ReactNode }) {
   return <p className="text-sm leading-7 text-[#8b949e]">{children}</p>;
+}
+
+function formatLandingDate(value: string | null) {
+  if (!value) return "agora";
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
 
 function LandingChipRow({ chips }: { chips: string[] }) {
@@ -708,43 +716,43 @@ function LandingFooterNodeComponent({ data, selected }: NodeProps<AppNode>) {
 }
 
 function LandingAccessNodeComponent({ data, selected }: NodeProps<AppNode>) {
-  const account = useAuthStore((state) => state.account);
-  const login = useAuthStore((state) => state.login);
-  const register = useAuthStore((state) => state.register);
-  const [mode, setMode] = useState<AuthMode>(account ? "login" : "register");
-  const [email, setEmail] = useState(account?.email ?? "");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [pending, setPending] = useState(false);
+  const session = useAuthStore((state) => state.session);
+  const license = useAuthStore((state) => state.license);
+  const pending = useAuthStore((state) => state.pending);
+  const billingPending = useAuthStore((state) => state.billingPending);
+  const loginWithGoogle = useAuthStore((state) => state.loginWithGoogle);
+  const requestBillingCharge = useAuthStore((state) => state.requestBillingCharge);
   const [error, setError] = useState("");
+  const activeCharge = license.billing.activeCharge;
+  const qrCodeImage =
+    activeCharge?.qrCodePayload &&
+    typeof activeCharge.qrCodePayload === "object" &&
+    "brCodeBase64" in activeCharge.qrCodePayload
+      ? (activeCharge.qrCodePayload.brCodeBase64 as string | undefined)
+      : undefined;
+  const brCode =
+    activeCharge?.qrCodePayload &&
+    typeof activeCharge.qrCodePayload === "object" &&
+    "brCode" in activeCharge.qrCodePayload
+      ? (activeCharge.qrCodePayload.brCode as string | undefined)
+      : undefined;
 
-  useEffect(() => {
-    setMode(account ? "login" : "register");
-    if (account?.email) {
-      setEmail(account.email);
-    }
-  }, [account]);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setPending(true);
+  const handleGoogleLogin = async () => {
     setError("");
-
-    const result =
-      mode === "register"
-        ? await register({ email, password, confirmPassword })
-        : await login({ email, password });
-
-    setPending(false);
+    const result = await loginWithGoogle();
 
     if (!result.success) {
-      setError(result.error ?? "Nao foi possivel validar o acesso agora.");
-      return;
+      setError(result.error ?? "Nao foi possivel iniciar o login Google.");
     }
+  };
 
-    setPassword("");
-    setConfirmPassword("");
+  const handleChargeRequest = async (planType: "monthly" | "lifetime") => {
+    setError("");
+    const result = await requestBillingCharge(planType);
+
+    if (!result.success) {
+      setError(result.error ?? "Nao foi possivel gerar o PIX agora.");
+    }
   };
 
   return (
@@ -752,8 +760,8 @@ function LandingAccessNodeComponent({ data, selected }: NodeProps<AppNode>) {
       <NodeContainer selected={selected} accentColor={(data.accent as string) ?? "#1f6feb"}>
         <LandingHeader
           eyebrow={coerceTextValue(data.eyebrow, "Access node")}
-          title={coerceTextValue(data.label, "Abrir workspace")}
-          meta={coerceTextValue(data.meta, "real auth surface")}
+          title={coerceTextValue(data.label, "Entrar e liberar o workspace")}
+          meta={coerceTextValue(data.meta, "google + trial + pix")}
         />
 
         <div
@@ -764,91 +772,150 @@ function LandingAccessNodeComponent({ data, selected }: NodeProps<AppNode>) {
           <LandingLead>
             {coerceTextValue(
               data.description,
-              "O bloco de entrada mora dentro do grafo para deixar claro que a homepage e o app seguem a mesma interface mental.",
+              "O fluxo comercial do produto comeca aqui: login com Google, trial completo e cobranca PIX quando o workspace vira operacao real.",
             )}
           </LandingLead>
 
-          <div className="mt-4 grid gap-2 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => setMode("login")}
-              disabled={!account}
-              className={`rounded-md border px-3 py-2 text-sm transition-colors ${
-                mode === "login"
-                  ? "border-[#1f6feb] bg-[#0c1a2e] text-[#e6edf3]"
-                  : "border-[#30363d] bg-[#0d1117] text-[#7d8590]"
-              } ${account ? "hover:text-[#e6edf3]" : "cursor-not-allowed opacity-45"}`}
-            >
-              Entrar
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("register")}
-              disabled={Boolean(account)}
-              className={`rounded-md border px-3 py-2 text-sm transition-colors ${
-                mode === "register"
-                  ? "border-[#1f6feb] bg-[#0c1a2e] text-[#e6edf3]"
-                  : "border-[#30363d] bg-[#0d1117] text-[#7d8590]"
-              } ${account ? "cursor-not-allowed opacity-45" : "hover:text-[#e6edf3]"}`}
-            >
-              Criar acesso
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="mt-4 space-y-3">
-            <input
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="operator@flowmerge.local"
-              className="w-full rounded-md border border-[#30363d] bg-[#0d1117] px-3 py-2.5 text-sm text-[#e6edf3] outline-none placeholder:text-[#4f5964] focus:border-[#1f6feb]"
-            />
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Sua senha local"
-              className="w-full rounded-md border border-[#30363d] bg-[#0d1117] px-3 py-2.5 text-sm text-[#e6edf3] outline-none placeholder:text-[#4f5964] focus:border-[#1f6feb]"
-            />
-            {mode === "register" ? (
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                placeholder="Confirme a senha"
-                className="w-full rounded-md border border-[#30363d] bg-[#0d1117] px-3 py-2.5 text-sm text-[#e6edf3] outline-none placeholder:text-[#4f5964] focus:border-[#1f6feb]"
-              />
-            ) : null}
-
-            {error ? (
-              <div className="rounded-md border border-[#f8514933] bg-[#2a1215] px-3 py-2 text-sm text-[#f85149]">
-                {error}
+          {!session ? (
+            <>
+              <div className="mt-4 rounded-2xl border border-[#30363d] bg-[#11161d] p-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-[#e6edf3]">
+                  <LockKeyhole className="h-4 w-4 text-[#58a6ff]" />
+                  Login unico
+                </div>
+                <div className="mt-3 space-y-2 text-[13px] leading-6 text-[#8b949e]">
+                  <div className="flex items-start gap-2">
+                    <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-[#3fb950]" />
+                    Better Auth cuida da sessao e o produto continua local-first.
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-[#3fb950]" />
+                    Trial de 14 dias com automacao, analytics, A/B e funil no mesmo canvas.
+                  </div>
+                </div>
               </div>
-            ) : null}
 
-            <button
-              type="submit"
-              disabled={pending}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#238636] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#2ea043] disabled:opacity-60"
-            >
-              {pending ? "Validando..." : mode === "register" ? "Criar e abrir" : "Abrir canvas"}
-              <ArrowRight className="h-4 w-4" />
-            </button>
-          </form>
+              {error ? (
+                <div className="mt-4 rounded-md border border-[#f8514933] bg-[#2a1215] px-3 py-2 text-sm text-[#f85149]">
+                  {error}
+                </div>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                disabled={pending}
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#238636] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#2ea043] disabled:opacity-60"
+              >
+                {pending ? "Redirecionando..." : "Entrar com Google"}
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="mt-4 rounded-2xl border border-[#30363d] bg-[#11161d] p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[#30363d] bg-[#0d1117] text-sm font-medium text-[#f0f6fc]">
+                    {session.name.slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-[#f0f6fc]">{session.name}</div>
+                    <div className="truncate text-[12px] text-[#7d8590]">{session.email}</div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-[#21262d] bg-[#0d1117] px-3 py-3">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-[#7d8590]">Estado</div>
+                    <div className="mt-2 text-sm font-medium text-[#f0f6fc]">
+                      {license.accessState ?? "sem sessao"}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-[#21262d] bg-[#0d1117] px-3 py-3">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-[#7d8590]">Prazo atual</div>
+                    <div className="mt-2 text-sm font-medium text-[#f0f6fc]">
+                      {license.timeline.paymentDueAt
+                        ? formatLandingDate(license.timeline.paymentDueAt)
+                        : formatLandingDate(license.timeline.trialEndsAt)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {license.billing.activeCharge ? (
+                <div className="mt-4 rounded-2xl border border-[#30363d] bg-[#11161d] p-4">
+                  <div className="text-sm font-medium text-[#f0f6fc]">PIX pronto para pagamento</div>
+                  <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">
+                    O acesso continua por enquanto, mas bloqueia em {formatLandingDate(license.timeline.paymentDueAt)}.
+                  </div>
+
+                  {qrCodeImage ? (
+                    <div className="mt-4 overflow-hidden rounded-2xl border border-[#30363d] bg-white p-3">
+                      <Image
+                        src={qrCodeImage}
+                        alt="QRCode PIX Flow Merge"
+                        width={160}
+                        height={160}
+                        unoptimized
+                        className="mx-auto h-40 w-40 object-contain"
+                      />
+                    </div>
+                  ) : null}
+
+                  {brCode ? (
+                    <div className="mt-4 rounded-xl border border-[#21262d] bg-[#0d1117] px-3 py-2 font-mono text-[11px] leading-5 text-[#9fb3c8]">
+                      {brCode}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    disabled={billingPending}
+                    onClick={() => {
+                      void handleChargeRequest("monthly");
+                    }}
+                    className="rounded-2xl border border-[#30363d] bg-[#11161d] px-4 py-4 text-left transition-colors hover:border-[#1f6feb] hover:bg-[#0f1a2b] disabled:opacity-60"
+                  >
+                    <div className="text-sm font-medium text-[#f0f6fc]">Pro Mensal</div>
+                    <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">R$89 via PIX, renovacao manual por ciclo.</div>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={billingPending}
+                    onClick={() => {
+                      void handleChargeRequest("lifetime");
+                    }}
+                    className="rounded-2xl border border-[#30363d] bg-[#11161d] px-4 py-4 text-left transition-colors hover:border-[#3fb950] hover:bg-[#102019] disabled:opacity-60"
+                  >
+                    <div className="text-sm font-medium text-[#f0f6fc]">Founder Lifetime</div>
+                    <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">R$1.068 para liberar o core single-user.</div>
+                  </button>
+                </div>
+              )}
+
+              {error ? (
+                <div className="mt-4 rounded-md border border-[#f8514933] bg-[#2a1215] px-3 py-2 text-sm text-[#f85149]">
+                  {error}
+                </div>
+              ) : null}
+            </>
+          )}
 
           <div className="mt-4 rounded-2xl border border-[#30363d] bg-[#11161d] p-4">
             <div className="flex items-center gap-2 text-sm font-medium text-[#e6edf3]">
               <LockKeyhole className="h-4 w-4 text-[#58a6ff]" />
-              Seguranca local
+              Regra comercial do v1
             </div>
             <div className="mt-3 space-y-2 text-[13px] leading-6 text-[#8b949e]">
               <div className="flex items-start gap-2">
                 <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-[#3fb950]" />
-                Email e senha ficam nesta maquina.
+                Trial de 14 dias com produto completo antes da cobranca.
               </div>
               <div className="flex items-start gap-2">
                 <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-[#3fb950]" />
-                A homepage ja ensina o proprio ritual de entrada no workspace.
+                Se atrasar 7 dias, bloqueia. Se passar 14 dias bloqueado, apaga tudo.
               </div>
             </div>
           </div>

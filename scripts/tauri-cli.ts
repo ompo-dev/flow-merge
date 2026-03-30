@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -84,11 +84,47 @@ async function loadUpdaterSigningEnv() {
   return env;
 }
 
+async function buildConfigArgs(args: string[], env: NodeJS.ProcessEnv) {
+  const isBuildLikeCommand = args.some((value) => value === "build" || value === "bundle");
+  if (!isBuildLikeCommand) {
+    return args;
+  }
+
+  const frontendDist = env.FLOW_MERGE_DESKTOP_FRONTEND_DIST?.trim();
+  if (!frontendDist) {
+    throw new Error(
+      "FLOW_MERGE_DESKTOP_FRONTEND_DIST nao definido. Configure a URL web hospedada para empacotar o desktop sem depender de static export.",
+    );
+  }
+
+  const tempDir = join(rootDir, ".codex-temp");
+  const configPath = join(tempDir, "tauri.remote.conf.json");
+
+  await mkdir(tempDir, { recursive: true });
+  await writeFile(
+    configPath,
+    JSON.stringify(
+      {
+        build: {
+          frontendDist,
+          beforeBuildCommand: null,
+        },
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+
+  return [...args, "--config", configPath];
+}
+
 const args = process.argv.slice(2);
 await runVersionSync(args);
 const env = await loadUpdaterSigningEnv();
+const tauriArgs = await buildConfigArgs(args, env);
 
-const child = spawn(tauriBinary, args, {
+const child = spawn(tauriBinary, tauriArgs, {
   cwd: rootDir,
   env,
   stdio: "inherit",

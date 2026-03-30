@@ -7,9 +7,12 @@ import {
   isDesktopUpdaterAvailable,
   listenDesktopUpdaterEvents,
 } from "@/lib/desktop-updater";
+import { useAuthStore } from "@/store/useAuthStore";
 import { useFlowStore } from "@/store/useFlowStore";
 
 export function DesktopUpdateBridge() {
+  const authHydrated = useAuthStore((state) => state.hydrated);
+  const authenticated = useAuthStore((state) => state.license.authenticated);
   const updater = useFlowStore((state) => state.updater);
   const hydrateUpdaterConfig = useFlowStore((state) => state.hydrateUpdaterConfig);
   const handleUpdaterEvent = useFlowStore((state) => state.handleUpdaterEvent);
@@ -53,6 +56,7 @@ export function DesktopUpdateBridge() {
 
   useEffect(() => {
     if (!isDesktopUpdaterAvailable()) return;
+    if (!authHydrated || !authenticated) return;
     if (!updater.enabled || !updater.autoUpdateEnabled) return;
 
     void checkForUpdates({ autoDownload: true });
@@ -64,6 +68,8 @@ export function DesktopUpdateBridge() {
     return () => window.clearInterval(interval);
   }, [
     checkForUpdates,
+    authHydrated,
+    authenticated,
     updater.autoUpdateEnabled,
     updater.checkIntervalMs,
     updater.enabled,

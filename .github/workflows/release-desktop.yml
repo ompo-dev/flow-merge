@@ -67,6 +67,22 @@ jobs:
             Remove-Item -LiteralPath "$testFile.sig" -ErrorAction SilentlyContinue
           }
 
+      - name: Configure remote frontend for desktop
+        shell: pwsh
+        env:
+          FLOW_MERGE_DESKTOP_FRONTEND_DIST: ${{ vars.FLOW_MERGE_DESKTOP_FRONTEND_DIST }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:FLOW_MERGE_DESKTOP_FRONTEND_DIST)) {
+            Write-Error "Missing repository variable FLOW_MERGE_DESKTOP_FRONTEND_DIST."
+            exit 1
+          }
+
+          $configPath = Join-Path $PWD "src-tauri/tauri.conf.json"
+          $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json -AsHashtable
+          $config.build.frontendDist = $env:FLOW_MERGE_DESKTOP_FRONTEND_DIST
+          $config.build.beforeBuildCommand = $null
+          $config | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath
+
       - name: Build and publish release assets
         uses: tauri-apps/tauri-action@action-v0.6.2
         env:
@@ -75,6 +91,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           FLOW_MERGE_UPDATE_REPOSITORY: ${{ github.repository }}
           FLOW_MERGE_UPDATE_PUBLIC_KEY: ${{ vars.FLOW_MERGE_UPDATE_PUBLIC_KEY }}
+          FLOW_MERGE_DESKTOP_FRONTEND_DIST: ${{ vars.FLOW_MERGE_DESKTOP_FRONTEND_DIST }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Flow Merge ${{ github.ref_name }}
