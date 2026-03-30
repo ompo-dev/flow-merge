@@ -15,11 +15,14 @@ jobs:
       matrix:
         include:
           - platform: windows-latest
+            args: ""
           - platform: ubuntu-22.04
-          - platform: macos-13
+            args: ""
+          - platform: macos-15-intel
+            args: ""
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -36,8 +39,36 @@ jobs:
       - name: Install JS dependencies
         run: bun install --frozen-lockfile
 
+      - name: Validate updater signing credentials
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          FLOW_MERGE_UPDATE_PUBLIC_KEY: ${{ vars.FLOW_MERGE_UPDATE_PUBLIC_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            Write-Error "Missing repository secret TAURI_SIGNING_PRIVATE_KEY."
+            exit 1
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:FLOW_MERGE_UPDATE_PUBLIC_KEY)) {
+            Write-Error "Missing repository variable FLOW_MERGE_UPDATE_PUBLIC_KEY."
+            exit 1
+          }
+
+          $testFile = Join-Path $PWD ".release-sign-test"
+          Set-Content -LiteralPath $testFile -Value "flow-merge-sign-test" -NoNewline
+
+          try {
+            bun tauri signer sign $testFile | Out-Null
+          }
+          finally {
+            Remove-Item -LiteralPath $testFile -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath "$testFile.sig" -ErrorAction SilentlyContinue
+          }
+
       - name: Build and publish release assets
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -50,6 +81,7 @@ jobs:
           releaseBody: Release automatica para Flow Merge.
           releaseDraft: false
           prerelease: false
+          args: ${{ matrix.args }}
 
   promote-internal:
     needs: build
@@ -57,7 +89,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
