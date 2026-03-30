@@ -26,3 +26,6 @@ log = "0.4"
 tauri = { version = "2.10.3", features = [] }
 tauri-plugin-log = "2"
 uuid = { version = "1.18.1", features = ["v4"] }
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+url = "2"

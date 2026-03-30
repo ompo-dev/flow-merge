@@ -1,0 +1,53 @@
+name: promote-channel
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Canal de release
+        required: true
+        type: choice
+        options:
+          - stable
+          - beta
+          - internal
+      version_tag:
+        description: Tag versionada para promover, ex: v0.1.3
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Download version release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_TAG: ${{ github.event.inputs.version_tag }}
+        run: |
+          mkdir -p .release-assets
+          gh api repos/${{ github.repository }}/releases/tags/$VERSION_TAG > .release-assets/release.json
+          gh release download "$VERSION_TAG" --dir .release-assets
+
+      - name: Build latest.json
+        env:
+          UPDATER_RELEASE_JSON_PATH: .release-assets/release.json
+          UPDATER_ASSET_DIR: .release-assets
+          UPDATER_OUTPUT_PATH: .release-assets/latest.json
+        run: bun run updater:manifest
+
+      - name: Publish channel manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANNEL: ${{ github.event.inputs.channel }}
+        run: |
+          gh release view "channel-$CHANNEL" >/dev/null 2>&1 || gh release create "channel-$CHANNEL" --title "Channel $CHANNEL" --notes "Mutable updater feed for channel $CHANNEL." --latest=false
+          gh release upload "channel-$CHANNEL" .release-assets/latest.json --clobber

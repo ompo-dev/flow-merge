@@ -1,0 +1,86 @@
+name: release-desktop
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+          - platform: ubuntu-22.04
+          - platform: macos-13
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Install JS dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build and publish release assets
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          FLOW_MERGE_UPDATE_REPOSITORY: ${{ github.repository }}
+          FLOW_MERGE_UPDATE_PUBLIC_KEY: ${{ vars.FLOW_MERGE_UPDATE_PUBLIC_KEY }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Flow Merge ${{ github.ref_name }}
+          releaseBody: Release automatica para Flow Merge.
+          releaseDraft: false
+          prerelease: false
+
+  promote-internal:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Fetch release metadata
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p .release-assets
+          gh api repos/${{ github.repository }}/releases/tags/$VERSION_TAG > .release-assets/release.json
+          gh release download "$VERSION_TAG" --dir .release-assets
+
+      - name: Build latest.json
+        env:
+          UPDATER_RELEASE_JSON_PATH: .release-assets/release.json
+          UPDATER_ASSET_DIR: .release-assets
+          UPDATER_OUTPUT_PATH: .release-assets/latest.json
+        run: bun run updater:manifest
+
+      - name: Publish internal channel manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view channel-internal >/dev/null 2>&1 || gh release create channel-internal --title "Channel internal" --notes "Mutable updater feed for the internal channel." --latest=false
+          gh release upload channel-internal .release-assets/latest.json --clobber

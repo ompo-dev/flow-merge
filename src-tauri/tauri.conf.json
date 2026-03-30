@@ -25,7 +25,12 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "nsis",
+      "app",
+      "appimage"
+    ],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -33,5 +38,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE4NzdCOEQyQUI1NTdGRTYKUldUbWYxV3IwcmgzR0w1NzJXMUFDbFZ4a0EzNVM0ejZleW1EOWNoU1BqU05zZWFaRUZySXhtVE4K",
+      "endpoints": [
+        "https://github.com/example/example/releases/download/channel-stable/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

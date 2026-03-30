@@ -10,11 +10,14 @@
     "check": "biome check .",
     "format": "biome format --write .",
     "verify:nodes": "bun scripts/verify-node-compatibility.ts",
-    "tauri": "tauri"
+    "updater:manifest": "bun scripts/build-updater-manifest.ts",
+    "tauri": "bun scripts/tauri-cli.ts"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.0",
     "@xyflow/react": "^12.10.2",
     "axios": "^1.14.0",
     "framer-motion": "^12.38.0",
