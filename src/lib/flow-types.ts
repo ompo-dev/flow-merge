@@ -82,6 +82,7 @@ export interface Project {
   description?: string;
   accent?: string;
   active: boolean;
+  surface?: "app" | "landing";
 }
 
 export interface Workflow {
@@ -90,6 +91,7 @@ export interface Workflow {
   name: string;
   accent?: string;
   active: boolean;
+  surface?: "app" | "landing";
   nodes: AppNode[];
   edges: Edge[];
   createdAt: string;

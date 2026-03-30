@@ -22,6 +22,19 @@ import { NodeConfigPanel } from "@/components/canvas/NodeConfigPanel";
 import { WorkflowRuntimeBridge } from "@/components/runtime/WorkflowRuntimeBridge";
 import ActionNode from "@/components/nodes/ActionNode";
 import DashboardNode from "@/components/nodes/DashboardNode";
+import {
+  LandingAccessNode,
+  LandingAudienceNode,
+  LandingComponentsNode,
+  LandingDifferenceNode,
+  LandingFooterNode,
+  LandingHeroNode,
+  LandingPageMapNode,
+  LandingProofNode,
+  LandingSectionNode,
+  LandingUseCaseNode,
+  LandingWorkflowNode,
+} from "@/components/nodes/LandingNodes";
 import ShapeNode from "@/components/nodes/ShapeNode";
 import TriggerNode from "@/components/nodes/TriggerNode";
 import VizNode from "@/components/nodes/VizNode";
@@ -34,6 +47,17 @@ const nodeTypes = {
   vizNode: VizNode,
   dashboardNode: DashboardNode,
   shapeNode: ShapeNode,
+  landingHeroNode: LandingHeroNode,
+  landingSectionNode: LandingSectionNode,
+  landingPageMapNode: LandingPageMapNode,
+  landingDifferenceNode: LandingDifferenceNode,
+  landingWorkflowNode: LandingWorkflowNode,
+  landingComponentsNode: LandingComponentsNode,
+  landingUseCaseNode: LandingUseCaseNode,
+  landingAudienceNode: LandingAudienceNode,
+  landingProofNode: LandingProofNode,
+  landingFooterNode: LandingFooterNode,
+  landingAccessNode: LandingAccessNode,
 } as unknown as NodeTypes;
 
 const drawingTools: ToolMode[] = ["rect", "ellipse", "diamond", "arrow", "text"];
@@ -48,6 +72,11 @@ interface DrawState {
 }
 
 type NavigationDirection = "up" | "down" | "left" | "right";
+
+export interface CanvasAppProps {
+  mode?: "app" | "landing";
+  onAccessClick?: () => void;
+}
 
 function isCandidateInDirection(dx: number, dy: number, direction: NavigationDirection) {
   const threshold = 8;
@@ -66,7 +95,7 @@ function getDirectionScore(dx: number, dy: number, direction: NavigationDirectio
   return Math.abs(dy) + Math.abs(dx) * 0.45;
 }
 
-function CanvasInner() {
+function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
   const activeWorkflow = useActiveWorkflow();
   const onNodesChange = useFlowStore((state) => state.onNodesChange);
   const onEdgesChange = useFlowStore((state) => state.onEdgesChange);
@@ -88,10 +117,12 @@ function CanvasInner() {
   const [drawState, setDrawState] = useState<DrawState | null>(null);
   const restoreViewportRef = useRef<{ x: number; y: number; zoom: number } | null>(null);
   const focusedNodeIdRef = useRef<string | null>(null);
+  const initialViewportWorkflowRef = useRef<string | null>(null);
 
   const nodes = activeWorkflow?.nodes ?? EMPTY_NODES;
   const edges = activeWorkflow?.edges ?? EMPTY_EDGES;
   const isDrawingMode = drawingTools.includes(activeTool);
+  const isLandingMode = mode === "landing";
 
   const getNodeDimensions = useCallback((node: AppNode) => {
     const measuredWidth =
@@ -140,6 +171,39 @@ function CanvasInner() {
       return {
         x: node.position.x + width / 2,
         y: node.position.y + height / 2,
+      };
+    },
+    [getNodeDimensions],
+  );
+
+  const getNodesBounds = useCallback(
+    (targetNodes: AppNode[]) => {
+      if (targetNodes.length === 0) return null;
+
+      const firstNode = targetNodes[0];
+      const firstSize = getNodeDimensions(firstNode);
+      const initialBounds = {
+        minX: firstNode.position.x,
+        minY: firstNode.position.y,
+        maxX: firstNode.position.x + firstSize.width,
+        maxY: firstNode.position.y + firstSize.height,
+      };
+
+      const bounds = targetNodes.slice(1).reduce((accumulator, node) => {
+        const { width, height } = getNodeDimensions(node);
+        return {
+          minX: Math.min(accumulator.minX, node.position.x),
+          minY: Math.min(accumulator.minY, node.position.y),
+          maxX: Math.max(accumulator.maxX, node.position.x + width),
+          maxY: Math.max(accumulator.maxY, node.position.y + height),
+        };
+      }, initialBounds);
+
+      return {
+        x: bounds.minX,
+        y: bounds.minY,
+        width: bounds.maxX - bounds.minX,
+        height: bounds.maxY - bounds.minY,
       };
     },
     [getNodeDimensions],
@@ -225,10 +289,48 @@ function CanvasInner() {
   );
 
   useEffect(() => {
+    if (!activeWorkflow?.id) return;
+    if (initialViewportWorkflowRef.current === activeWorkflow.id) return;
+
+    initialViewportWorkflowRef.current = activeWorkflow.id;
     restoreViewportRef.current = null;
     focusedNodeIdRef.current = null;
-    fitView({ padding: 0.22, duration: 300 });
-  }, [activeWorkflow?.id, fitView]);
+
+    const frameId = window.requestAnimationFrame(() => {
+      if (isLandingMode) {
+        const topSectionBounds = getNodesBounds(
+          nodes.filter((node) => node.type !== "shapeNode" && node.position.y < 620),
+        );
+
+        if (topSectionBounds) {
+          fitBounds(topSectionBounds, { padding: 0.12, duration: 320 });
+          return;
+        }
+      }
+
+      fitView({ padding: 0.22, duration: 300 });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [activeWorkflow?.id, fitBounds, fitView, getNodesBounds, isLandingMode, nodes]);
+
+  useEffect(() => {
+    if (!isLandingMode) return;
+
+    const onFocusLandingNode = (event: Event) => {
+      const customEvent = event as CustomEvent<{ nodeId?: string }>;
+      const nextNodeId = customEvent.detail?.nodeId;
+      if (!nextNodeId) return;
+
+      clearContextNodes();
+      setRightClickCtx(null);
+      setSelectedNodeId(nextNodeId);
+      focusNode(nextNodeId);
+    };
+
+    window.addEventListener("flow-merge-focus-node", onFocusLandingNode);
+    return () => window.removeEventListener("flow-merge-focus-node", onFocusLandingNode);
+  }, [clearContextNodes, focusNode, isLandingMode, setRightClickCtx, setSelectedNodeId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -246,6 +348,12 @@ function CanvasInner() {
       if ((event.ctrlKey || event.metaKey) && direction) {
         event.preventDefault();
         navigateToConnectedNode(direction);
+        return;
+      }
+
+      if (isLandingMode && event.key === "Escape") {
+        setRightClickCtx(null);
+        if (isDrawingMode) setActiveTool("select");
         return;
       }
 
@@ -285,6 +393,7 @@ function CanvasInner() {
     selectedNodeId,
     setActiveTool,
     setRightClickCtx,
+    isLandingMode,
   ]);
 
   const onNodeClick = useCallback(
@@ -307,7 +416,17 @@ function CanvasInner() {
       setSelectedNodeId(node.id);
       focusNode(node.id);
     },
-    [activeTool, clearContextNodes, deleteNode, focusNode, restoreFocusedViewport, setRightClickCtx, setSelectedNodeId, toggleContextNode],
+    [
+      activeTool,
+      clearContextNodes,
+      deleteNode,
+      focusNode,
+      isLandingMode,
+      restoreFocusedViewport,
+      setRightClickCtx,
+      setSelectedNodeId,
+      toggleContextNode,
+    ],
   );
 
   const onPaneClick = useCallback(() => {
@@ -320,6 +439,7 @@ function CanvasInner() {
   const onPaneContextMenu = useCallback(
     (event: MouseEvent | React.MouseEvent) => {
       event.preventDefault();
+      if (isLandingMode) return;
       const clientX = "clientX" in event ? event.clientX : 0;
       const clientY = "clientY" in event ? event.clientY : 0;
       const flowPosition = screenToFlowPosition({ x: clientX, y: clientY });
@@ -330,7 +450,7 @@ function CanvasInner() {
         flowY: flowPosition.y,
       });
     },
-    [screenToFlowPosition, setRightClickCtx],
+    [isLandingMode, screenToFlowPosition, setRightClickCtx],
   );
 
   const handleDrawStart = useCallback(
@@ -482,12 +602,13 @@ function CanvasInner() {
         nodeTypes={nodeTypes}
         selectionMode={SelectionMode.Partial}
         panOnDrag={activeTool === "hand" ? [0, 1, 2] : isDrawingMode ? false : [1, 2]}
-        panOnScroll={activeTool === "hand"}
-        panOnScrollMode={PanOnScrollMode.Free}
+        panOnScroll={isLandingMode || activeTool === "hand"}
+        panOnScrollMode={isLandingMode ? PanOnScrollMode.Vertical : PanOnScrollMode.Free}
+        zoomOnScroll={!isLandingMode}
         minZoom={0.1}
         maxZoom={3}
-        fitView
-        fitViewOptions={{ padding: 0.22 }}
+        fitView={!isLandingMode}
+        fitViewOptions={isLandingMode ? undefined : { padding: 0.22 }}
         snapToGrid
         snapGrid={[20, 20]}
         defaultEdgeOptions={{
@@ -527,22 +648,22 @@ function CanvasInner() {
         </div>
       ) : null}
 
-      <FloatingToolbar />
-      <WorkflowRuntimeBridge />
+      <FloatingToolbar mode={mode} onAccessClick={onAccessClick} />
+      {!isLandingMode ? <WorkflowRuntimeBridge /> : null}
       <DrawingTools />
-      <AIChatPanel />
-      <AddNodePanel />
-      {!isAddNodePanelOpen ? <NodeConfigPanel /> : null}
-      {rightClickCtx ? <ContextNodeMenu /> : null}
+      {!isLandingMode ? <AIChatPanel /> : null}
+      {!isLandingMode ? <AddNodePanel /> : null}
+      {!isLandingMode && !isAddNodePanelOpen ? <NodeConfigPanel /> : null}
+      {!isLandingMode && rightClickCtx ? <ContextNodeMenu /> : null}
     </div>
   );
 }
 
-export default function CanvasApp() {
+export default function CanvasApp({ mode = "app", onAccessClick }: CanvasAppProps) {
   return (
     <ReactFlowProvider>
       <div className="relative h-screen w-screen overflow-hidden bg-[#0d1117]">
-        <CanvasInner />
+        <CanvasInner mode={mode} onAccessClick={onAccessClick} />
       </div>
     </ReactFlowProvider>
   );
