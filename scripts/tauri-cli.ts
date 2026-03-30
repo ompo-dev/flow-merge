@@ -18,6 +18,34 @@ async function fileExists(path: string) {
   }
 }
 
+async function runVersionSync(args: string[]) {
+  const isBuildLikeCommand = args.some((value) => value === "build" || value === "bundle");
+  if (!isBuildLikeCommand) return;
+
+  await new Promise<void>((resolve, reject) => {
+    const syncProcess = spawn(process.execPath, ["scripts/sync-version.ts"], {
+      cwd: rootDir,
+      env: process.env,
+      stdio: "inherit",
+      shell: false,
+    });
+
+    syncProcess.on("exit", (code, signal) => {
+      if (signal) {
+        reject(new Error(`Version sync interrupted by signal ${signal}`));
+        return;
+      }
+      if (code && code !== 0) {
+        reject(new Error(`Version sync failed with exit code ${code}`));
+        return;
+      }
+      resolve();
+    });
+
+    syncProcess.on("error", reject);
+  });
+}
+
 async function loadUpdaterSigningEnv() {
   const env = { ...process.env };
   const args = process.argv.slice(2);
@@ -56,8 +84,9 @@ async function loadUpdaterSigningEnv() {
   return env;
 }
 
-const env = await loadUpdaterSigningEnv();
 const args = process.argv.slice(2);
+await runVersionSync(args);
+const env = await loadUpdaterSigningEnv();
 
 const child = spawn(tauriBinary, args, {
   cwd: rootDir,

@@ -1,14 +1,15 @@
 {
   "name": "projeto-next",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "bun run version:sync && next build",
     "preview": "bunx serve out",
     "lint": "biome lint .",
     "check": "biome check .",
     "format": "biome format --write .",
+    "version:sync": "bun scripts/sync-version.ts",
     "verify:nodes": "bun scripts/verify-node-compatibility.ts",
     "updater:manifest": "bun scripts/build-updater-manifest.ts",
     "updater:doctor": "bun scripts/updater-doctor.ts",
