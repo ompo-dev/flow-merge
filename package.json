@@ -11,6 +11,7 @@
     "format": "biome format --write .",
     "verify:nodes": "bun scripts/verify-node-compatibility.ts",
     "updater:manifest": "bun scripts/build-updater-manifest.ts",
+    "updater:doctor": "bun scripts/updater-doctor.ts",
     "tauri": "bun scripts/tauri-cli.ts"
   },
   "dependencies": {

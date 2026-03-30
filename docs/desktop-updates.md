@@ -26,12 +26,34 @@
   - `.codex-temp/updater.key`
 - se encontrar a chave privada local, tambem carrega automaticamente a chave publica correspondente para o app
 - se nao encontrar nenhuma chave, o comando falha cedo com uma mensagem explicita
+- `bun run updater:doctor` valida o estado local de chave, workflows e artefatos
+
+## Gerar a chave correta
+
+1. Criar a pasta local da chave:
+   - `New-Item -ItemType Directory -Force .codex-temp`
+2. Gerar o par de chaves do updater:
+   - `bunx tauri signer generate -w .codex-temp/updater.key`
+3. O comando vai gerar:
+   - `.codex-temp/updater.key`
+   - `.codex-temp/updater.key.pub`
+4. A senha digitada nesse comando deve ser a mesma usada em `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` no GitHub.
 
 ## Secrets esperados no GitHub
 
 - `TAURI_SIGNING_PRIVATE_KEY`
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
 - `FLOW_MERGE_UPDATE_PUBLIC_KEY` pode ficar em `Repository Variables` porque nao e secreto
+
+## Como preencher no GitHub
+
+1. Abrir `Settings > Secrets and variables > Actions`.
+2. Em `Repository secrets`, criar:
+   - `TAURI_SIGNING_PRIVATE_KEY` com o conteudo completo de `.codex-temp/updater.key`
+   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` com a senha usada ao gerar a chave
+3. Em `Repository variables`, criar:
+   - `FLOW_MERGE_UPDATE_PUBLIC_KEY` com o conteudo completo de `.codex-temp/updater.key.pub`
+4. Rodar `bun run updater:doctor` para confirmar localmente qual chave publica deve ser copiada.
 
 ## Fluxo operacional
 
@@ -40,6 +62,32 @@
 3. Os artefatos assinados e `.sig` sao anexados na release `vX.Y.Z`.
 4. O mesmo workflow atualiza automaticamente `channel-internal/latest.json`.
 5. Quando quiser promover, rode `promote-channel` informando `stable`, `beta` ou `internal` e a tag versionada.
+
+## Publicar uma nova versao
+
+1. Atualizar a versao em:
+   - `package.json`
+   - `src-tauri/Cargo.toml`
+   - `src-tauri/tauri.conf.json`
+2. Validar localmente:
+   - `bun run lint`
+   - `bun run build`
+   - `cargo check --manifest-path src-tauri/Cargo.toml`
+   - `bun run updater:doctor`
+3. Subir a branch com essas alteracoes.
+4. Criar e enviar a tag:
+   - `git tag vX.Y.Z`
+   - `git push origin vX.Y.Z`
+5. A release `vX.Y.Z` e a atualizacao de `channel-internal` sao feitas pelo GitHub Actions.
+
+## Promover um canal sem recompilar
+
+1. Abrir `Actions > promote-channel`.
+2. Clicar em `Run workflow`.
+3. Informar:
+   - `channel`: `stable`, `beta` ou `internal`
+   - `version_tag`: a tag pronta, por exemplo `v0.1.1`
+4. O workflow baixa os artefatos ja publicados da release versionada e substitui apenas o `latest.json` do canal escolhido.
 
 ## Formato do manifest
 
