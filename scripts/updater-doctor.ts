@@ -105,11 +105,19 @@ const tauriConfig = tauriConfigRaw ? (JSON.parse(tauriConfigRaw) as TauriConfig)
 const configuredProductName = tauriConfig?.productName?.trim() || null;
 const configuredVersion = tauriConfig?.version?.trim() || null;
 const tauriConfigPublicKey = tauriConfig?.plugins?.updater?.pubkey?.trim() || null;
-const firstUpdaterBundle = updaterBundles[0] ?? null;
-const firstUpdaterSignaturePath = firstUpdaterBundle ? `${firstUpdaterBundle}.sig` : null;
+const matchingUpdaterBundle =
+  configuredVersion == null
+    ? null
+    : updaterBundles.find(
+        (bundlePath) =>
+          basename(bundlePath).includes(`_${configuredVersion}_`) ||
+          basename(bundlePath).includes(configuredVersion),
+      ) ?? null;
+const selectedUpdaterBundle = matchingUpdaterBundle ?? updaterBundles.at(-1) ?? null;
+const selectedUpdaterSignaturePath = selectedUpdaterBundle ? `${selectedUpdaterBundle}.sig` : null;
 const effectivePublicKey = localPublicKeyRaw?.trim() || devPublicKeyRaw?.trim() || null;
-const firstUpdaterSignatureExists = firstUpdaterSignaturePath
-  ? await fileExists(firstUpdaterSignaturePath)
+const selectedUpdaterSignatureExists = selectedUpdaterSignaturePath
+  ? await fileExists(selectedUpdaterSignaturePath)
   : false;
 
 console.log("Flow Merge updater doctor\n");
@@ -141,20 +149,20 @@ printCheck(await fileExists(manifestScriptPath), "Gerador de latest.json", manif
 printCheck(
   updaterBundles.length > 0,
   "Artefato local de updater",
-  firstUpdaterBundle ?? `nenhum artefato encontrado em ${bundleRootPath}`,
+  selectedUpdaterBundle ?? `nenhum artefato encontrado em ${bundleRootPath}`,
 );
 printCheck(
-  firstUpdaterSignatureExists,
+  selectedUpdaterSignatureExists,
   "Assinatura de artefato local",
-  firstUpdaterSignaturePath ?? "nenhum artefato encontrado para validar .sig",
+  selectedUpdaterSignaturePath ?? "nenhum artefato encontrado para validar .sig",
 );
 
-if (firstUpdaterBundle && configuredVersion) {
+if (selectedUpdaterBundle && configuredVersion) {
   printCheck(
-    basename(firstUpdaterBundle).includes(`_${configuredVersion}_`) ||
-      basename(firstUpdaterBundle).includes(configuredVersion),
+    basename(selectedUpdaterBundle).includes(`_${configuredVersion}_`) ||
+      basename(selectedUpdaterBundle).includes(configuredVersion),
     "Artefato combina com a versao configurada",
-    basename(firstUpdaterBundle),
+    basename(selectedUpdaterBundle),
   );
 }
 

@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Flow Merge",
-  "version": "0.1.0",
+  "version": "0.1.5",
   "identifier": "com.flowmerge.desktop",
   "build": {
     "frontendDist": "../out",
@@ -41,7 +41,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE4NzdCOEQyQUI1NTdGRTYKUldUbWYxV3IwcmgzR0w1NzJXMUFDbFZ4a0EzNVM0ejZleW1EOWNoU1BqU05zZWFaRUZySXhtVE4K",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM3Q0VGMEVEODA4QzdDNwpSV1RIeHdqWUR1OThEQzR1NEljZzZpa1lhZ2kyR25CUzhYZnBRUk5PZ095QjRTaGVYNXN3VFVTOQo=",
       "endpoints": [
         "https://github.com/example/example/releases/download/channel-stable/latest.json"
       ],
