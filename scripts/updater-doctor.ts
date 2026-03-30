@@ -108,6 +108,9 @@ const tauriConfigPublicKey = tauriConfig?.plugins?.updater?.pubkey?.trim() || nu
 const firstUpdaterBundle = updaterBundles[0] ?? null;
 const firstUpdaterSignaturePath = firstUpdaterBundle ? `${firstUpdaterBundle}.sig` : null;
 const effectivePublicKey = localPublicKeyRaw?.trim() || devPublicKeyRaw?.trim() || null;
+const firstUpdaterSignatureExists = firstUpdaterSignaturePath
+  ? await fileExists(firstUpdaterSignaturePath)
+  : false;
 
 console.log("Flow Merge updater doctor\n");
 
@@ -141,7 +144,7 @@ printCheck(
   firstUpdaterBundle ?? `nenhum artefato encontrado em ${bundleRootPath}`,
 );
 printCheck(
-  Boolean(firstUpdaterSignaturePath) && (await fileExists(firstUpdaterSignaturePath)),
+  firstUpdaterSignatureExists,
   "Assinatura de artefato local",
   firstUpdaterSignaturePath ?? "nenhum artefato encontrado para validar .sig",
 );
