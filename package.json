@@ -1,6 +1,6 @@
 {
   "name": "projeto-next",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "overrides": {
     "dompurify": "3.3.3"
@@ -22,6 +22,7 @@
     "e2e:serve": "bun scripts/e2e-serve.ts",
     "postinstall": "bun run db:generate",
     "version:sync": "bun scripts/sync-version.ts",
+    "release:verify-tag": "bun scripts/check-release-tag-version.ts",
     "verify:nodes": "bun scripts/verify-node-compatibility.ts",
     "updater:manifest": "bun scripts/build-updater-manifest.ts",
     "updater:doctor": "bun scripts/updater-doctor.ts",
