@@ -13,6 +13,7 @@ import type {
   RuntimeEvaluationContext,
   RuntimeWebhookResponse,
 } from "@/lib/runtime-types";
+import { assertSafeUserCode } from "@/lib/code-safety";
 import { expandSemanticPreview } from "@/lib/data-semantics";
 import { getActiveIncomingNodes } from "@/lib/workflow-intelligence";
 
@@ -802,6 +803,7 @@ function createHelpers(): ProgramHelpers {
 }
 
 function evaluateExpression(expression: string, scope: Record<string, unknown>) {
+  assertSafeUserCode(expression, "Expressao programavel");
   const evaluator = new Function(
     ...Object.keys(scope),
     `"use strict"; return (${expression});`,
@@ -860,6 +862,8 @@ export function executeProgrammableNode(args: {
   if (programmable.mode !== "code" || !programmable.code.trim()) {
     return null;
   }
+
+  assertSafeUserCode(programmable.code, "Codigo do node programavel");
 
   const items = args.input.items.map((item) => deepClone(item.json));
   const scope: ProgramScope = {

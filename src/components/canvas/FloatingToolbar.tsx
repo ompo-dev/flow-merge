@@ -752,8 +752,9 @@ export function FloatingToolbar({
         />
       ) : null}
 
-      <div className="fc-panel absolute left-1/2 top-3 z-50 flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center overflow-x-auto">
-        <div className="relative">
+      <div className="absolute left-1/2 top-3 z-50 max-w-[calc(100vw-24px)] -translate-x-1/2">
+        <div className="fc-panel flex items-center overflow-visible whitespace-nowrap">
+          <div className="relative">
           <button
             onClick={() => {
               setShowProjectDropdown((current) => !current);
@@ -782,9 +783,9 @@ export function FloatingToolbar({
               readOnly={isLandingMode}
             />
           ) : null}
-        </div>
+          </div>
 
-        <div className="relative">
+          <div className="relative">
           <button
             onClick={() => {
               setShowWorkflowDropdown((current) => !current);
@@ -846,10 +847,10 @@ export function FloatingToolbar({
               readOnly={isLandingMode}
             />
           ) : null}
-        </div>
+          </div>
 
-        {isLandingMode ? (
-          <>
+          {isLandingMode ? (
+            <>
             <button
               type="button"
               className="flex items-center gap-2 border-r border-[#30363d] px-3 py-2 text-xs text-[#7d8590]"
@@ -868,20 +869,20 @@ export function FloatingToolbar({
             >
               <Download className="h-3.5 w-3.5" />
             </button>
-          </>
-        ) : null}
+            </>
+          ) : null}
 
-        {isLandingMode ? (
-          <button
-            type="button"
-            onClick={onAccessClick}
-            className="flex items-center gap-2 px-3 py-2 text-xs text-[#58a6ff] transition-colors hover:bg-[#21262d]"
-          >
-            <Play className="h-3.5 w-3.5" />
-            Ir para access
-          </button>
-        ) : (
-          <>
+          {isLandingMode ? (
+            <button
+              type="button"
+              onClick={onAccessClick}
+              className="flex items-center gap-2 px-3 py-2 text-xs text-[#58a6ff] transition-colors hover:bg-[#21262d]"
+            >
+              <Play className="h-3.5 w-3.5" />
+              Ir para access
+            </button>
+          ) : (
+            <>
             <button
               onClick={() => setAddNodePanel(true)}
               className="flex items-center gap-2 border-r border-[#30363d] px-3 py-2 text-xs text-[#7d8590] transition-colors hover:bg-[#21262d] hover:text-[#e6edf3]"
@@ -963,13 +964,15 @@ export function FloatingToolbar({
 
             <button
               onClick={() => setShowSettings(!showSettings)}
+              data-testid="toolbar-settings-button"
               className="flex h-full items-center justify-center px-3 text-[#7d8590] transition-colors hover:bg-[#21262d] hover:text-[#e6edf3]"
               title="Settings"
             >
               <Settings className="h-3.5 w-3.5" />
             </button>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       {!isLandingMode && showSettings ? <SettingsModal onClose={() => setShowSettings(false)} /> : null}

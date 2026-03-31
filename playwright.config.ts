@@ -1,0 +1,28 @@
+import { defineConfig, devices } from "@playwright/test";
+
+export default defineConfig({
+  testDir: "./tests/e2e",
+  fullyParallel: false,
+  retries: process.env.CI ? 2 : 0,
+  reporter: [["list"], ["html", { open: "never" }]],
+  use: {
+    baseURL: "http://127.0.0.1:3001",
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
+    video: "retain-on-failure",
+  },
+  projects: [
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+    },
+  ],
+  webServer: {
+    command: "bun run e2e:serve",
+    url: "http://127.0.0.1:3001",
+    reuseExistingServer: !process.env.CI,
+    timeout: 240_000,
+  },
+});

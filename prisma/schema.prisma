@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PlanType {
+  monthly
+  lifetime
+}
+
+enum AccessState {
+  trial_active
+  payment_pending
+  active_monthly
+  active_lifetime
+  blocked
+  deleted
+}
+
+enum BillingChargeStatus {
+  pending
+  paid
+  expired
+  canceled
+  failed
+}
+
+enum BillingChargeKind {
+  initial
+  renewal
+}
+
+enum ReleaseRole {
+  stable
+  beta
+  internal
+}
+
+model user {
+  id             String       @id @default(cuid())
+  name           String
+  email          String       @unique
+  emailVerified  Boolean      @default(false)
+  image          String?
+  planType       PlanType?
+  accessState    AccessState  @default(trial_active)
+  releaseRole    ReleaseRole  @default(stable)
+  trialEndsAt    DateTime?
+  paymentDueAt   DateTime?
+  blockedAt      DateTime?
+  deleteAt       DateTime?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  accounts       account[]
+  sessions       session[]
+  billingCharges BillingCharge[]
+
+  @@index([accessState, paymentDueAt])
+  @@index([accessState, deleteAt])
+}
+
+model session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?   @db.Text
+  refreshToken          String?   @db.Text
+  idToken               String?   @db.Text
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+model BillingCharge {
+  id               String              @id @default(cuid())
+  providerChargeId String              @unique
+  userId           String
+  planType         PlanType
+  amount           Int
+  status           BillingChargeStatus @default(pending)
+  chargeKind       BillingChargeKind   @default(initial)
+  qrCodePayload    Json?
+  providerStatus   String?
+  providerPayload  Json?
+  dueAt            DateTime
+  paidAt           DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+}

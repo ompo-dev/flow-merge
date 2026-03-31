@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { Edge } from "@xyflow/react";
 import type { AppNode, Project, Workflow, WorkflowNodeData } from "@/lib/flow-types";
 import type { NodeTypeId } from "@/lib/node-catalog";
+import { assertSafeUserCode } from "@/lib/code-safety";
 import { expandSemanticRecord } from "@/lib/data-semantics";
 import { executeProgrammableNode, inferNodeProgrammingContext } from "@/lib/node-programming";
 import { buildWorkflowIntelligenceGraph, getActiveIncomingNodes } from "@/lib/workflow-intelligence";
@@ -1222,6 +1223,7 @@ async function executeNode(
     case "action_code":
     case "action_function": {
       const code = getNodeParameter(node, "Code") || "return items.map((item) => item.json);";
+      assertSafeUserCode(code, "Codigo runtime do node");
       // Local desktop runtime by design. This executes user code on local data.
       const executor = new Function(
         "items",

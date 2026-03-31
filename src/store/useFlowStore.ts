@@ -30,6 +30,7 @@ import {
   persistRuntimeStores,
   readPersistedRuntimeStores,
 } from "@/lib/runtime-storage";
+import { clearFlowMergeLocalStorage } from "@/lib/local-workspace";
 import type {
   AppUpdateEvent,
   AppUpdateSnapshot,
@@ -49,6 +50,11 @@ import type {
   Workflow,
   WorkflowNodeData,
 } from "@/lib/flow-types";
+import {
+  clampReleaseChannel,
+  normalizeReleaseChannels,
+  RELEASE_CHANNELS,
+} from "@/lib/release-access";
 import type {
   ProjectRuntimeStore,
   RuntimeNodeSnapshot,
@@ -134,7 +140,9 @@ interface FlowState {
   createChat: () => string;
   deleteChat: (id: string) => void;
   setDeepseekKey: (key: string) => void;
+  resetLocalWorkspace: () => void;
   hydrateUpdaterConfig: (config: DesktopUpdaterConfig | null) => void;
+  syncUpdaterAccess: (allowedChannels: ReleaseChannel[]) => void;
   handleUpdaterEvent: (event: AppUpdateEvent) => void;
   setReleaseChannel: (channel: ReleaseChannel) => void;
   setAutoUpdateEnabled: (enabled: boolean) => void;
@@ -283,9 +291,28 @@ function getInitialDeepseekKey() {
   return window.localStorage.getItem(DEEPSEEK_STORAGE_KEY) ?? "";
 }
 
-function normalizeReleaseChannel(value: unknown): ReleaseChannel {
-  if (value === "beta" || value === "internal") return value;
-  return "stable";
+function getVisibleUpdaterChannels(
+  supportedChannels: readonly ReleaseChannel[],
+  allowedChannels: readonly ReleaseChannel[],
+) {
+  const normalizedSupported = normalizeReleaseChannels(supportedChannels, RELEASE_CHANNELS);
+  const normalizedAllowed = normalizeReleaseChannels(allowedChannels, ["stable"]);
+  const visibleChannels = normalizedSupported.filter((channel) => normalizedAllowed.includes(channel));
+  return visibleChannels.length ? visibleChannels : ["stable"];
+}
+
+function resetUpdaterTransientState(updater: AppUpdateSnapshot): AppUpdateSnapshot {
+  return {
+    ...updater,
+    updateState: updater.enabled ? "idle" : "disabled",
+    pendingVersion: null,
+    availableVersion: null,
+    downloadedBytes: null,
+    totalBytes: null,
+    releaseNotes: null,
+    publishedAt: null,
+    lastUpdateError: null,
+  };
 }
 
 function createDefaultUpdaterState(): AppUpdateSnapshot {
@@ -294,6 +321,8 @@ function createDefaultUpdaterState(): AppUpdateSnapshot {
     repository: null,
     currentVersion: "",
     releaseChannel: "stable",
+    supportedChannels: [...RELEASE_CHANNELS],
+    allowedChannels: ["stable"],
     autoUpdateEnabled: true,
     updateState: isDesktopUpdaterAvailable() ? "idle" : "disabled",
     lastCheckedAt: null,
@@ -318,9 +347,23 @@ function getInitialUpdaterState(): AppUpdateSnapshot {
     if (!raw) return defaults;
 
     const parsed = JSON.parse(raw) as Partial<AppUpdateSnapshot>;
+    const supportedChannels = normalizeReleaseChannels(
+      parsed.supportedChannels,
+      defaults.supportedChannels,
+    );
+    const allowedChannels = normalizeReleaseChannels(
+      parsed.allowedChannels,
+      defaults.allowedChannels,
+    );
     return {
       ...defaults,
-      releaseChannel: normalizeReleaseChannel(parsed.releaseChannel),
+      releaseChannel: clampReleaseChannel(
+        parsed.releaseChannel,
+        allowedChannels,
+        supportedChannels,
+      ),
+      supportedChannels,
+      allowedChannels,
       autoUpdateEnabled:
         typeof parsed.autoUpdateEnabled === "boolean" ? parsed.autoUpdateEnabled : true,
       currentVersion:
@@ -691,32 +734,51 @@ export function findFreePosition(
   return { x: x + nodes.length * 28, y: y + nodes.length * 20 };
 }
 
-const initialProjects = createMockProjects();
-const initialWorkflows = createMockWorkflows().map(syncWorkflow);
-const initialChatState = getInitialChatState();
-const initialRuntimeStores = readPersistedRuntimeStores();
-const initialUpdaterState = getInitialUpdaterState();
+function createInitialProjects() {
+  return createMockProjects();
+}
+
+function createInitialWorkflows() {
+  return createMockWorkflows().map(syncWorkflow);
+}
+
+function createInitialExecutions(workflows: Workflow[]) {
+  return createMockExecutions(workflows);
+}
+
+function createInitialFlowSnapshot() {
+  const projects = createInitialProjects();
+  const workflows = createInitialWorkflows();
+  const chatState = getInitialChatState();
+  const runtimeStores = readPersistedRuntimeStores();
+
+  return {
+    projects,
+    workflows,
+    executions: createInitialExecutions(workflows),
+    runtimeStores,
+    nodeRuntimeByWorkflow: {} as Record<string, Record<string, RuntimeNodeSnapshot>>,
+    runtimeBaseUrl: null,
+    activeProjectId: workflows[0]?.projectId ?? projects[0]?.id ?? "",
+    activeWorkflowId: workflows[0]?.id ?? "",
+    selectedNodeId: null,
+    contextNodeIds: [] as string[],
+    isAddNodePanelOpen: false,
+    rightClickCtx: null,
+    activeTool: "select" as ToolMode,
+    showSettings: false,
+    chatExpanded: false,
+    chatThreads: chatState.chatThreads,
+    activeChatId: chatState.activeChatId,
+    deepseekKey: getInitialDeepseekKey(),
+    updater: getInitialUpdaterState(),
+  };
+}
+
+const initialFlowSnapshot = createInitialFlowSnapshot();
 
 export const useFlowStore = create<FlowState>((set, get) => ({
-  projects: initialProjects,
-  workflows: initialWorkflows,
-  executions: createMockExecutions(initialWorkflows),
-  runtimeStores: initialRuntimeStores,
-  nodeRuntimeByWorkflow: {},
-  runtimeBaseUrl: null,
-  activeProjectId: initialWorkflows[0]?.projectId ?? initialProjects[0]?.id ?? "",
-  activeWorkflowId: initialWorkflows[0]?.id ?? "",
-  selectedNodeId: null,
-  contextNodeIds: [],
-  isAddNodePanelOpen: false,
-  rightClickCtx: null,
-  activeTool: "select",
-  showSettings: false,
-  chatExpanded: false,
-  chatThreads: initialChatState.chatThreads,
-  activeChatId: initialChatState.activeChatId,
-  deepseekKey: getInitialDeepseekKey(),
-  updater: initialUpdaterState,
+  ...initialFlowSnapshot,
 
   setRuntimeBaseUrl: (url) => set({ runtimeBaseUrl: url }),
 
@@ -1232,24 +1294,64 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     set({ deepseekKey: key });
   },
 
+  resetLocalWorkspace: () => {
+    clearFlowMergeLocalStorage();
+    const snapshot = createInitialFlowSnapshot();
+    set({
+      ...snapshot,
+    });
+  },
+
   hydrateUpdaterConfig: (config) =>
     set((state) => {
       const nextUpdater: AppUpdateSnapshot = config
-        ? {
+        ? resetUpdaterTransientState({
             ...state.updater,
             enabled: config.enabled,
             repository: config.repository,
             currentVersion: config.currentVersion,
-            releaseChannel: state.updater.releaseChannel ?? config.defaultChannel,
+            supportedChannels: normalizeReleaseChannels(
+              config.channels,
+              state.updater.supportedChannels,
+            ),
+            releaseChannel: clampReleaseChannel(
+              state.updater.releaseChannel ?? config.defaultChannel,
+              state.updater.allowedChannels,
+              normalizeReleaseChannels(config.channels, state.updater.supportedChannels),
+            ),
             checkIntervalMs: config.checkIntervalMs,
             feedUrls: config.feedUrls,
-            updateState: config.enabled ? "idle" : "disabled",
-          }
-        : {
+          })
+        : resetUpdaterTransientState({
             ...state.updater,
             enabled: false,
-            updateState: "disabled",
-          };
+          });
+
+      persistUpdaterState(nextUpdater);
+      return { updater: nextUpdater };
+    }),
+
+  syncUpdaterAccess: (allowedChannels) =>
+    set((state) => {
+      const normalizedAllowedChannels = normalizeReleaseChannels(allowedChannels, ["stable"]);
+      const visibleChannels = getVisibleUpdaterChannels(
+        state.updater.supportedChannels,
+        normalizedAllowedChannels,
+      );
+      const nextUpdater = resetUpdaterTransientState({
+        ...state.updater,
+        allowedChannels: normalizedAllowedChannels,
+        releaseChannel: clampReleaseChannel(
+          state.updater.releaseChannel,
+          normalizedAllowedChannels,
+          state.updater.supportedChannels,
+        ),
+        feedUrls: Object.fromEntries(
+          Object.entries(state.updater.feedUrls).filter(([channel]) =>
+            visibleChannels.includes(channel as ReleaseChannel),
+          ),
+        ) as Partial<Record<ReleaseChannel, string>>,
+      });
 
       persistUpdaterState(nextUpdater);
       return { updater: nextUpdater };
@@ -1298,18 +1400,14 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
   setReleaseChannel: (channel) =>
     set((state) => {
-      const nextUpdater: AppUpdateSnapshot = {
+      const nextUpdater: AppUpdateSnapshot = resetUpdaterTransientState({
         ...state.updater,
-        releaseChannel: channel,
-        updateState: state.updater.enabled ? "idle" : "disabled",
-        pendingVersion: null,
-        availableVersion: null,
-        downloadedBytes: null,
-        totalBytes: null,
-        releaseNotes: null,
-        publishedAt: null,
-        lastUpdateError: null,
-      };
+        releaseChannel: clampReleaseChannel(
+          channel,
+          state.updater.allowedChannels,
+          state.updater.supportedChannels,
+        ),
+      });
 
       persistUpdaterState(nextUpdater);
       return { updater: nextUpdater };

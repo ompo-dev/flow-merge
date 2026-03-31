@@ -1,5 +1,8 @@
 import type { Edge, Node, XYPosition } from "@xyflow/react";
 import type { NodeTypeId } from "@/lib/node-catalog";
+import type { ReleaseChannel } from "@/lib/release-access";
+
+export type { ReleaseChannel } from "@/lib/release-access";
 
 export interface DashboardWidget {
   id: string;
@@ -172,8 +175,6 @@ export interface RightClickContext {
   flowY: number;
 }
 
-export type ReleaseChannel = "stable" | "beta" | "internal";
-
 export type AppUpdateState =
   | "idle"
   | "checking"
@@ -189,6 +190,8 @@ export interface AppUpdateSnapshot {
   repository: string | null;
   currentVersion: string;
   releaseChannel: ReleaseChannel;
+  supportedChannels: ReleaseChannel[];
+  allowedChannels: ReleaseChannel[];
   autoUpdateEnabled: boolean;
   updateState: AppUpdateState;
   lastCheckedAt: number | null;

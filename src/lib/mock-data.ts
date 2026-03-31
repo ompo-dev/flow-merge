@@ -410,34 +410,34 @@ export function createMockWorkflows(): Workflow[] {
       { x: 220, y: 160 },
       { width: 880, height: 420 },
       {
-        label: "Homepage hero",
+        label: "Hero de posicionamento",
         eyebrow: "Flow Merge",
-        headline: "One canvas for automation, analytics and AI.",
-        body: "A homepage nao imita o produto. Ela ja e o produto em modo pagina. O visitante move nodes, apaga rabiscos, exporta o board e entende o operating model antes do login.",
+        headline: "Automacao e analytics no mesmo canvas.",
+        body: "Capture qualquer dado, transforme em workflow e entenda impacto real no negocio sem trocar de ferramenta. Flow Merge foi feito para founders tecnicos, indie hackers e micro-SaaS que precisam operar e decidir no mesmo lugar.",
         chips: [
-          "desktop-first",
-          "move + delete + export",
-          "n8n workflows",
-          "PostHog thinking",
-          "operator surface",
+          "automation + analytics",
+          "desktop + web",
+          "local-first",
+          "google login",
+          "pix simples",
         ],
         focusNodeId: "landing-home-access",
         metrics: [
           {
-            value: "1 surface",
-            label: "for execute + understand",
-            detail: "Workflow, metric and response live in the same plane.",
+            value: "1 canvas",
+            label: "para operar e analisar",
+            detail: "Workflow, metrica e resposta ficam na mesma superficie.",
           },
           {
-            value: "real canvas",
-            label: "not a static mockup",
+            value: "14 dias",
+            label: "de trial completo",
             detail:
-              "Nodes, drawing tools and export stay active on the landing.",
+              "Automacao, analytics, funil, A/B e alertas antes da cobranca.",
           },
           {
-            value: "site-native",
-            label: "ready for more pages",
-            detail: "Landing today, policies, terms and blog later.",
+            value: "local-first",
+            label: "dados do produto ficam com voce",
+            detail: "Backend guarda so identidade, licenca e cobranca.",
           },
         ],
       },
@@ -448,39 +448,39 @@ export function createMockWorkflows(): Workflow[] {
       { x: 220, y: 800 },
       { width: 440, height: 500 },
       {
-        label: "Site / pages",
+        label: "Site / produto",
         eyebrow: "Navigation model",
-        meta: "Flow Merge -> Landing Page",
+        meta: "Flow Merge -> Landing",
         description:
-          "No topo, o primeiro dropdown deixa de ser um projeto qualquer e vira o proprio site Flow Merge. O segundo dropdown vira a lista de paginas desse site.",
+          "O mesmo sistema de superficies pode servir a landing, o app e as paginas futuras. O topo organiza o site como projeto e cada pagina publica como workflow vivo.",
         pages: [
           {
             title: "Landing Page",
             slug: "/",
-            status: "live now",
+            status: "live",
             summary:
-              "Homepage interativa, com hero, thesis, examples, access and export.",
+              "Posicionamento, growth cases e acesso ao trial no proprio canvas.",
+          },
+          {
+            title: "Pricing",
+            slug: "/pricing",
+            status: "next",
+            summary:
+              "Mensal, vitalicio founder e regras de trial, lock e delecao.",
+          },
+          {
+            title: "Docs",
+            slug: "/docs",
+            status: "later",
+            summary:
+              "Guias de setup, playbooks e templates de operator loops.",
           },
           {
             title: "Policies",
             slug: "/policies",
             status: "later",
             summary:
-              "Politicas como pagina do mesmo canvas language, sem trocar a shell.",
-          },
-          {
-            title: "Terms of Use",
-            slug: "/terms",
-            status: "later",
-            summary:
-              "Termos e contratos podendo usar nodes de texto, anexos e referencias.",
-          },
-          {
-            title: "Blog",
-            slug: "/blog",
-            status: "later",
-            summary:
-              "Posts e historias de operadores vivendo no mesmo sistema de paginas.",
+              "Politicas e termos no mesmo sistema visual do produto.",
           },
         ],
       },
@@ -491,11 +491,11 @@ export function createMockWorkflows(): Workflow[] {
       { x: 1260, y: 160 },
       { width: 430, height: 540 },
       {
-        label: "Open workspace",
+        label: "Comece o trial",
         eyebrow: "Access node",
-        meta: "login in the graph",
+        meta: "google + trial + pix",
         description:
-          "O login tambem vive como node para provar que a homepage e so uma pagina do mesmo sistema de interface.",
+          "Login com Google libera o workspace local. O backend segura so identidade, licenca e cobranca; seus workflows e runtime continuam fora do banco.",
       },
     ),
     makeLandingNode(
@@ -504,42 +504,42 @@ export function createMockWorkflows(): Workflow[] {
       { x: 740, y: 800 },
       { width: 960, height: 500 },
       {
-        label: "What is actually being merged",
+        label: "O que esta sendo unido aqui",
         eyebrow: "Positioning",
-        meta: "n8n + PostHog + operator UX",
+        meta: "execucao + leitura + acao",
         description:
-          "A landing precisa explicar com clareza o porque do produto existir. O argumento principal e unir execucao e leitura, nao empilhar features soltas.",
+          "A comparacao com n8n e PostHog ajuda a orientar, mas a proposta nao e copiar duas ferramentas. A proposta e dar uma unica superficie para executar, ler impacto e agir sem troca de contexto.",
         columnsContent: [
           {
-            title: "n8n energy",
+            title: "n8n executa",
             summary:
-              "Execucao explicita, steps visiveis e automacao que o operador consegue rastrear.",
+              "Workflows, triggers, branches e integracoes continuam claros e operaveis.",
             bullets: [
-              "Triggers, actions and branches no mesmo board",
-              "Integracoes e runtime de fluxo como primeira classe",
-              "O ato de operar continua legivel para o time",
+              "Automacoes visiveis e rastreaveis",
+              "Fluxos e runtime como primeira classe",
+              "Execucao legivel para um founder tecnico",
             ],
             meta: "execution plane",
           },
           {
-            title: "PostHog energy",
+            title: "PostHog analisa",
             summary:
-              "Leitura de comportamento, impacto e produto sem depender de dashboards isolados.",
+              "Funil, comportamento, experimentos e impacto aparecem perto da operacao.",
             bullets: [
-              "Funnels, cohorts e sinais de produto perto da acao",
-              "Interpretacao do que mudou em vez de numero solto",
-              "Visao de impacto para growth, product e revenue",
+              "Leitura de produto e growth no contexto do fluxo",
+              "Sinais de negocio em vez de numero isolado",
+              "Impacto em receita junto com o evento",
             ],
-            meta: "reading plane",
+            meta: "analytics plane",
           },
           {
-            title: "Flow Merge",
+            title: "Flow Merge junta",
             summary:
-              "As duas camadas cabem na mesma superficie operavel e local.",
+              "O insight nasce no mesmo canvas que executa a resposta.",
             bullets: [
-              "O insight ja nasce no contexto do workflow",
-              "A resposta pode acontecer no mesmo canvas",
-              "Homepage, app e futuras paginas usam a mesma linguagem",
+              "Erro pode virar perda estimada em R$",
+              "Funil e A/B podem disparar uma acao no mesmo lugar",
+              "Produto local-first com web e desktop na mesma linguagem",
             ],
             meta: "operator plane",
           },
@@ -552,39 +552,39 @@ export function createMockWorkflows(): Workflow[] {
       { x: 240, y: 2320 },
       { width: 720, height: 520 },
       {
-        label: "Simple idea flows",
-        eyebrow: "Examples",
-        meta: "clear loops",
+        label: "Casos ancora do lancamento",
+        eyebrow: "Growth loops",
+        meta: "logs, funnel, behavior",
         description:
-          "Nao e necessario fingir uma suite inteira para a landing. O visitante so precisa enxergar loops simples que mostrem como o produto pensa.",
+          "Os loops abaixo mostram o produto do jeito certo: sinais entram, o impacto aparece e a resposta pode sair do mesmo canvas. Sem prometer magia, sem separar analytics de automacao.",
         lanes: [
           {
-            title: "Revenue pulse",
+            title: "Logs e erros -> impacto em R$",
             subtitle:
-              "Sinais de billing entram, ganham contexto e viram decisao.",
-            steps: ["Webhook", "Enrich account", "Store", "Metric", "Alert"],
+              "Log entra, ganha contexto de receita e vira prioridade operacional.",
+            steps: ["Log", "Classify", "Map revenue", "Estimate", "Alert"],
             footer:
-              "Bom para mostrar receita, sinais de conta e risco no mesmo board.",
+              "Mostra exatamente porque observabilidade sem impacto de negocio e incompleta.",
           },
           {
-            title: "Activation watch",
-            subtitle: "Eventos de produto viram funil e resposta operacional.",
-            steps: ["Event", "Segment", "Funnel", "Insight", "Follow-up"],
+            title: "Funil + A/B -> decisao",
+            subtitle: "Eventos viram comparacao, leitura de queda e ajuste de produto.",
+            steps: ["Event", "Segment", "Compare", "Decide", "Ship"],
             footer:
-              "Mostra crescimento e produto sem separar a analise do fluxo.",
+              "O mesmo fluxo mede conversao e prepara a proxima acao.",
           },
           {
-            title: "Incident overlay",
-            subtitle: "Erro tecnico e impacto de negocio aparecem juntos.",
+            title: "Padrao comportamental -> acao comercial",
+            subtitle: "Comportamento de compra vira insight e campanha contextual.",
             steps: [
-              "Schedule",
-              "Fetch logs",
-              "Classify",
-              "Revenue impact",
-              "Escalate",
+              "Cart",
+              "Detect pattern",
+              "Score",
+              "Coupon",
+              "Measure",
             ],
             footer:
-              "Bom para explicar porque operator canvas importa para times tecnicos.",
+              "Bom para mostrar promocoes, nudges e monetizacao guiada por padrao real.",
           },
         ],
       },
@@ -595,39 +595,39 @@ export function createMockWorkflows(): Workflow[] {
       { x: 1020, y: 2320 },
       { width: 700, height: 520 },
       {
-        label: "Component language on display",
+        label: "Linguagem nativa do produto",
         eyebrow: "Native pieces",
-        meta: "same building blocks",
+        meta: "same operator surface",
         description:
-          "A homepage precisa mostrar nossos componentes de verdade, nao um layout que so parece com eles de longe.",
+          "A landing nao usa uma fachada separada. Ela expande os mesmos blocos do produto para explicar acesso, casos de uso, prova e monetizacao.",
         examples: [
           {
             title: "Hero node",
             nodeKind: "landingHeroNode",
             summary:
-              "Abre a pagina com brand, thesis, CTA e signal cards dentro do proprio node.",
-            sample: "headline + body + chips + metrics + CTA",
+              "Abre a tese de automacao + analytics com metricas e CTA direto para o access node.",
+            sample: "headline + proof + CTA",
           },
           {
             title: "Access node",
             nodeKind: "landingAccessNode",
             summary:
-              "O login deixa de ser modal solto e vira bloco de interface no grafo.",
-            sample: "tabs de entrar/criar + formulario + seguranca local",
+              "Mostra login Google, trial, PIX e status comercial sem tirar o visitante do fluxo.",
+            sample: "google login + trial + pix",
           },
           {
             title: "Difference node",
             nodeKind: "landingDifferenceNode",
             summary:
-              "Explica a fusao n8n/PostHog/Flow Merge com colunas legiveis.",
-            sample: "execution plane | reading plane | operator plane",
+              "Enquadra n8n, PostHog e a tese propria do Flow Merge sem depender de slogan vazio.",
+            sample: "execute | analyze | act",
           },
           {
             title: "Use case node",
             nodeKind: "landingUseCaseNode",
             summary:
-              "Agrupa cenarios reais sem transformar tudo em um dashboard de cards genericos.",
-            sample: "revenue ops | activation | incidents | client operations",
+              "Agrupa loops reais para founders de SaaS pequeno sem virar grade generica de cards.",
+            sample: "errors | funnel | behavior | revenue",
           },
         ],
       },
@@ -638,31 +638,31 @@ export function createMockWorkflows(): Workflow[] {
       { x: 860, y: 1840 },
       { width: 840, height: 540 },
       {
-        label: "Who can run this today",
+        label: "O que voce consegue rodar hoje",
         eyebrow: "Use cases",
-        meta: "operator loops",
+        meta: "operational analytics",
         description:
-          "Cada bloco abaixo explica um caso de uso simples, com cara de trabalho real e sem parecer slide de produto.",
+          "Os exemplos abaixo ancoram a promessa comercial em trabalho real de indie hacker e micro-SaaS. Tudo parte do mesmo principio: dado entra, impacto aparece, resposta sai.",
         items: [
           {
-            title: "Revenue ops room",
-            body: "Webhook de billing, enriquecimento por conta, visualizacao de MRR e alerta quando churn risk aparece no mesmo board.",
-            meta: "billing -> enrich -> metric -> alert",
+            title: "Erro tecnico com impacto financeiro",
+            body: "Erros de login, checkout ou onboarding entram com log, ganham contexto de receita e viram prioridade baseada no dinheiro em risco.",
+            meta: "logs -> classify -> revenue -> alert",
           },
           {
-            title: "Experiment command",
-            body: "Evento de pagina, segmentacao, leitura de funil e follow-up de copy ou canal sem trocar de ferramenta.",
-            meta: "events -> segment -> funnel -> action",
+            title: "Funil e A/B no mesmo fluxo",
+            body: "Eventos de produto, segmentacao, comparacao entre variantes e decisao operacional sem saltar para outra suite de analytics.",
+            meta: "events -> segment -> compare -> ship",
           },
           {
-            title: "Incident with business impact",
-            body: "Erro operacional entra, ganha contexto de receita e vira decisao de resposta em vez de numero isolado.",
-            meta: "logs -> classify -> impact -> escalate",
+            title: "Cupom na data certa",
+            body: "Padroes de carrinho e compra por dia util viram gatilho comercial para desconto, campanha ou follow-up com criterio.",
+            meta: "behavior -> score -> coupon -> measure",
           },
           {
-            title: "Agency operating board",
-            body: "Fluxos de clientes viram canvases explicaveis, editaveis e exportaveis para colaboracao rapida.",
-            meta: "client ops -> board -> export",
+            title: "Revenue room para founder tecnico",
+            body: "Billing, eventos de produto e alertas de churn convivem no mesmo command center sem stack fragmentado demais cedo.",
+            meta: "billing -> enrich -> risk -> act",
           },
         ],
       },
@@ -673,31 +673,31 @@ export function createMockWorkflows(): Workflow[] {
       { x: 240, y: 3080 },
       { width: 560, height: 540 },
       {
-        label: "Best fit first",
+        label: "Quem sente valor primeiro",
         eyebrow: "Audience",
-        meta: "small technical teams",
+        meta: "founders tecnicos",
         description:
-          "O melhor cliente sente dor de contexto quebrado. Ele nao quer uma automacao num lugar e a leitura em outro.",
+          "O melhor cliente ainda nao quer montar um stack pesado, mas ja precisa operar receita, produto e automacao com disciplina. Ele sente a dor da troca de contexto todos os dias.",
         items: [
           {
-            title: "Founder-led SaaS",
-            body: "Quer operar produto, receita e automacao sem montar um stack pesado cedo demais.",
-            meta: "2-12 people",
+            title: "Indie hackers",
+            body: "Querem uma superficie unica para entender o negocio e disparar a proxima acao sem engenharia demais.",
+            meta: "solo to tiny team",
           },
           {
-            title: "Growth + revenue ops",
-            body: "Precisa ligar teste, funil, insight e resposta sem pular entre automacao e analytics.",
-            meta: "daily operator loop",
+            title: "Founders de micro-SaaS",
+            body: "Precisam ligar billing, ativacao, erro e retencao quando a operacao ainda passa muito pela pessoa fundadora.",
+            meta: "0 -> 1 stage",
           },
           {
-            title: "Product engineers",
-            body: "Quer um plano unico para eventos, integracoes, erros e impacto de negocio.",
+            title: "Growth e revenue ops enxutos",
+            body: "Precisam ligar experimento, funil, insight e follow-up sem quebrar o contexto em quatro ferramentas.",
+            meta: "daily decision loop",
+          },
+          {
+            title: "Product engineers operadores",
+            body: "Querem ver eventos, integracoes, falhas e impacto comercial na mesma leitura operacional.",
             meta: "technical operators",
-          },
-          {
-            title: "Service teams",
-            body: "Podem transformar setups de clientes em command centers que realmente se explicam.",
-            meta: "multi-client boards",
           },
         ],
       },
@@ -708,33 +708,33 @@ export function createMockWorkflows(): Workflow[] {
       { x: 240, y: 1700 },
       { width: 400, height: 420 },
       {
-        label: "Proof by interaction",
+        label: "Prova do formato",
         eyebrow: "Format check",
         meta: "not static marketing",
         description:
-          "A prova principal da landing e mostrar o produto acontecendo na frente do visitante.",
+          "A prova principal nao e um slogan. E ver o mesmo canvas explicando acesso, casos, cobranca e superficie operacional sem virar mockup de marketing.",
         metrics: [
           {
-            value: "drag",
-            label: "move the nodes",
-            detail: "A homepage nao trava o canvas. Ela convida a explorar.",
+            value: "1 login",
+            label: "Google",
+            detail: "Identidade simples para web e desktop com Better Auth.",
           },
           {
-            value: "delete",
-            label: "erase what you dislike",
+            value: "PIX",
+            label: "mensal ou vitalicio",
             detail:
-              "Nodes e desenhos podem sair do board se o visitante quiser.",
+              "Cobranca direta para o publico Brasil-first do v1.",
           },
           {
-            value: "draw",
-            label: "annotate in place",
-            detail: "Ferramentas de desenho seguem ativas para ideacao rapida.",
+            value: "7 + 14",
+            label: "grace e delecao",
+            detail: "Fluxo comercial claro: trial, cobranca, bloqueio e limpeza final.",
           },
           {
-            value: "export",
-            label: "share exact intent",
+            value: "local",
+            label: "workspace nao sobe",
             detail:
-              "O JSON exportado vira referencia objetiva para a proxima iteracao.",
+              "Banco recebe so identidade, licenca e metadata de billing.",
           },
         ],
       },
@@ -745,11 +745,11 @@ export function createMockWorkflows(): Workflow[] {
       { x: 700, y: 1360 },
       { width: 1020, height: 420 },
       {
-        label: "Page system ready to expand",
-        eyebrow: "Roadmap pages",
-        meta: "site shell",
+        label: "O site e o produto falam a mesma lingua",
+        eyebrow: "Site shell",
+        meta: "same surface",
         description:
-          "Hoje a landing page e a primeira pagina publica desse site. O proximo passo e adicionar outras paginas no mesmo modelo, sem voltar para uma UX separada.",
+          "A homepage vende o produto usando a mesma linguagem do app. Isso permite expandir pricing, docs e politicas sem cair numa camada de marketing desconectada do que o usuario realmente vai usar.",
         focusNodeId: "landing-home-access",
         pages: [
           {
@@ -757,28 +757,28 @@ export function createMockWorkflows(): Workflow[] {
             slug: "/",
             status: "live",
             summary:
-              "A homepage interativa que ja demonstra o canvas, os nodes e a narrativa central.",
+              "Posicionamento, casos ancora e acesso ao trial no proprio canvas.",
+          },
+          {
+            title: "Pricing",
+            slug: "/pricing",
+            status: "next",
+            summary:
+              "Mensal, vitalicio founder, trial e regras de lock em pagina nativa.",
+          },
+          {
+            title: "Docs",
+            slug: "/docs",
+            status: "next",
+            summary:
+              "Playbooks e templates de workflows para SaaS pequeno.",
           },
           {
             title: "Policies",
             slug: "/policies",
-            status: "next",
-            summary:
-              "Conteudo juridico ainda usando a mesma shell de pagina e o mesmo menu.",
-          },
-          {
-            title: "Terms",
-            slug: "/terms",
-            status: "next",
-            summary:
-              "Termos de uso em modo canvas/page, sem sair do ecossistema visual do produto.",
-          },
-          {
-            title: "Blog",
-            slug: "/blog",
             status: "later",
             summary:
-              "Historias, operadores e walkthroughs como paginas navegaveis do mesmo site.",
+              "Termos, privacidade e operacao legal na mesma shell.",
           },
         ],
       },
@@ -791,7 +791,7 @@ export function createMockWorkflows(): Workflow[] {
         "trigger_manual",
         { x: 80, y: 260 },
         {
-          label: "Why not split tools?",
+          label: "Por que nao separar ferramentas?",
           description:
             "A pergunta da landing comeca aqui: por que juntar automacao e leitura de impacto?",
         },
@@ -800,7 +800,7 @@ export function createMockWorkflows(): Workflow[] {
         "action_set",
         { x: 360, y: 120 },
         {
-          label: "n8n strength",
+          label: "n8n executa",
           description:
             "Orquestracao, integracoes, branches e steps explicitos.",
           notes: "Excelente para executar fluxos.",
@@ -810,7 +810,7 @@ export function createMockWorkflows(): Workflow[] {
         "analytics_compare",
         { x: 360, y: 400 },
         {
-          label: "PostHog strength",
+          label: "PostHog analisa",
           description: "Funnels, cohorts, retencao e comportamento de produto.",
           notes: "Excelente para interpretar o que aconteceu.",
         },
@@ -819,7 +819,7 @@ export function createMockWorkflows(): Workflow[] {
         "action_merge",
         { x: 700, y: 260 },
         {
-          label: "Merge the planes",
+          label: "Flow Merge junta",
           description:
             "Flow Merge coloca execucao e interpretacao no mesmo grafo operacional.",
           notes: "O operador nao perde a linha entre detectar e agir.",
@@ -829,7 +829,7 @@ export function createMockWorkflows(): Workflow[] {
         "viz_table",
         { x: 1040, y: 70 },
         {
-          label: "Category map",
+          label: "Mapa de categoria",
           config: {
             columns: "Plane,n8n,PostHog,Flow Merge",
             rows: [
@@ -865,7 +865,7 @@ export function createMockWorkflows(): Workflow[] {
         "viz_chart",
         { x: 1040, y: 370 },
         {
-          label: "Operator fit",
+          label: "Fit operacional",
           chartType: "bar",
           vizVariant: "users",
           config: {
@@ -883,25 +883,25 @@ export function createMockWorkflows(): Workflow[] {
         "viz_report",
         { x: 1380, y: 220 },
         {
-          label: "Positioning note",
+          label: "Nota de posicionamento",
           config: {
-            reportTitle: "How to explain it",
+            reportTitle: "Como explicar",
             reportItems: [
               {
-                label: "Automation clarity",
-                value: "Strong",
+                label: "Clareza de automacao",
+                value: "Alta",
                 delta: "+n8n DNA",
                 positive: true,
               },
               {
-                label: "Product reading",
-                value: "Strong",
+                label: "Leitura de produto",
+                value: "Alta",
                 delta: "+PostHog DNA",
                 positive: true,
               },
               {
-                label: "Operator surface",
-                value: "Unified",
+                label: "Superficie operacional",
+                value: "Unificada",
                 delta: "+Flow Merge",
                 positive: true,
               },
@@ -915,7 +915,7 @@ export function createMockWorkflows(): Workflow[] {
         "action_if",
         { x: 1720, y: 220 },
         {
-          label: "Need action now?",
+          label: "Precisa agir agora?",
           description:
             "Se o insight pede resposta imediata, o operador continua no mesmo canvas.",
           parameters: {
@@ -929,7 +929,7 @@ export function createMockWorkflows(): Workflow[] {
         "action_slack",
         { x: 1990, y: 110 },
         {
-          label: "Respond inside flow",
+          label: "Responder dentro do fluxo",
           description: "Alertas, follow-up ou handoff continuam no grafo.",
         },
       ),
@@ -937,7 +937,7 @@ export function createMockWorkflows(): Workflow[] {
         "monitor_revenue",
         { x: 1990, y: 360 },
         {
-          label: "Keep revenue in view",
+          label: "Receita sempre visivel",
           description:
             "Mesmo uma decisao de operacao continua ancorada em impacto.",
         },
@@ -952,7 +952,7 @@ export function createMockWorkflows(): Workflow[] {
         "trigger_webhook",
         { x: 80, y: 260 },
         {
-          label: "Product + billing events",
+          label: "Eventos de produto + billing",
           description:
             "Um mesmo fluxo pode receber sinais do produto e do faturamento.",
         },
@@ -961,7 +961,7 @@ export function createMockWorkflows(): Workflow[] {
         "analytics_enrich",
         { x: 360, y: 260 },
         {
-          label: "Add plan + account context",
+          label: "Adicionar contexto de conta",
           description:
             "Enriquece cada evento com conta, plano, receita e momento do usuario.",
         },
@@ -970,7 +970,7 @@ export function createMockWorkflows(): Workflow[] {
         "analytics_funnel",
         { x: 660, y: 120 },
         {
-          label: "Activation funnel",
+          label: "Funil de ativacao",
           description:
             "Mostra quedas entre etapa inicial, ativacao e pagamento.",
         },
@@ -979,7 +979,7 @@ export function createMockWorkflows(): Workflow[] {
         "monitor_error",
         { x: 660, y: 400 },
         {
-          label: "Incident watch",
+          label: "Vigia de incidentes",
           description:
             "Classifica sinais operacionais que afetam a experiencia.",
         },
@@ -988,7 +988,7 @@ export function createMockWorkflows(): Workflow[] {
         "action_merge",
         { x: 980, y: 260 },
         {
-          label: "Merge growth + reliability",
+          label: "Juntar growth + reliability",
           description:
             "Use cases de growth e de operacao convivem no mesmo command center.",
         },
@@ -997,7 +997,7 @@ export function createMockWorkflows(): Workflow[] {
         "viz_metric",
         { x: 1290, y: 70 },
         {
-          label: "MRR pulse",
+          label: "Pulso de MRR",
           vizVariant: "revenue",
           runtime: {
             status: "success",
@@ -1015,7 +1015,7 @@ export function createMockWorkflows(): Workflow[] {
         "viz_funnel",
         { x: 1290, y: 270 },
         {
-          label: "Signup to paid",
+          label: "Signup ate pago",
           vizVariant: "conversion",
           config: {
             stages: [
@@ -1031,24 +1031,24 @@ export function createMockWorkflows(): Workflow[] {
         "viz_table",
         { x: 1590, y: 40 },
         {
-          label: "Operator loops",
+          label: "Loops operacionais",
           config: {
             columns: "Loop,Trigger,Output",
             rows: [
               {
-                Loop: "Pricing tests",
+                Loop: "Teste de pricing",
                 Trigger: "webhook",
-                Output: "winner report",
+                Output: "relatorio vencedor",
               },
               {
-                Loop: "Activation",
+                Loop: "Ativacao",
                 Trigger: "events",
-                Output: "funnel + alert",
+                Output: "funil + alerta",
               },
               {
-                Loop: "Incidents",
+                Loop: "Incidentes",
                 Trigger: "schedule",
-                Output: "error + revenue overlay",
+                Output: "erro + impacto em receita",
               },
             ],
           },
@@ -1058,7 +1058,7 @@ export function createMockWorkflows(): Workflow[] {
         "viz_dashboard",
         { x: 1590, y: 280 },
         {
-          label: "Daily room",
+          label: "Sala diaria",
           config: { title: "Daily Operating Room" },
         },
       ),
@@ -1066,7 +1066,7 @@ export function createMockWorkflows(): Workflow[] {
         "action_slack",
         { x: 2190, y: 360 },
         {
-          label: "Daily digest",
+          label: "Digest diario",
           description:
             "O fechamento do fluxo ja pode acionar o time sem mudar de contexto.",
         },
@@ -1081,7 +1081,7 @@ export function createMockWorkflows(): Workflow[] {
         "trigger_schedule",
         { x: 80, y: 260 },
         {
-          label: "Daily operator review",
+          label: "Revisao diaria",
           description:
             "A landing tambem mostra para quem a superficie faz mais sentido.",
         },
@@ -1090,7 +1090,7 @@ export function createMockWorkflows(): Workflow[] {
         "action_switch",
         { x: 360, y: 260 },
         {
-          label: "Who is operating?",
+          label: "Quem esta operando?",
           description:
             "Cada perfil chega por necessidades diferentes, mas busca a mesma coisa: menos troca de contexto.",
           parameters: {
@@ -1124,16 +1124,16 @@ export function createMockWorkflows(): Workflow[] {
         "analytics_segment",
         { x: 700, y: 430 },
         {
-          label: "Agencies + operators",
+          label: "Indie hackers + micro-SaaS",
           description:
-            "Transformam automacoes de clientes em command centers legiveis para o dia a dia.",
+            "Precisam de leitura de negocio e automacao sem montar uma stack grande demais antes da hora.",
         },
       ),
       makeNode(
         "action_merge",
         { x: 1040, y: 260 },
         {
-          label: "Shared requirement",
+          label: "Requisito comum",
           description:
             "Todos precisam decidir com o workflow na frente, e nao com contexto espalhado.",
         },
@@ -1370,11 +1370,11 @@ export function createMockWorkflows(): Workflow[] {
     {
       id: "wf_landing_compare",
       projectId: LANDING_PROJECT_ID,
-      name: "n8n x PostHog x Flow Merge",
+      name: "Execute, analyze, act",
       accent: "#58a6ff",
       active: true,
       surface: "landing",
-      description: "Board de posicionamento comparativo em nodes reais.",
+      description: "Board comparativo para explicar a tese do produto sem slogan vazio.",
       tags: ["landing", "positioning", "compare"],
       createdAt: nowIso(-86400000),
       updatedAt: nowIso(-2400000),
@@ -1395,12 +1395,12 @@ export function createMockWorkflows(): Workflow[] {
     {
       id: "wf_landing_use_cases",
       projectId: LANDING_PROJECT_ID,
-      name: "Use Cases on Canvas",
+      name: "Casos ancora",
       accent: "#58a6ff",
       active: true,
       surface: "landing",
       description:
-        "Fluxos curtos mostrando revenue, activation e operations no mesmo plano.",
+        "Fluxos curtos para logs, funnel e comportamento no mesmo plano operacional.",
       tags: ["landing", "use-cases", "ops"],
       createdAt: nowIso(-86400000),
       updatedAt: nowIso(-3000000),
@@ -1421,11 +1421,11 @@ export function createMockWorkflows(): Workflow[] {
     {
       id: "wf_landing_audience",
       projectId: LANDING_PROJECT_ID,
-      name: "Who It Fits",
+      name: "Quem sente valor primeiro",
       accent: "#58a6ff",
       active: true,
       surface: "landing",
-      description: "Board de publico alvo, timing e fit operacional.",
+      description: "Board de ICP, timing de compra e fit operacional.",
       tags: ["landing", "audience", "fit"],
       createdAt: nowIso(-86400000),
       updatedAt: nowIso(-3600000),
