@@ -24,10 +24,13 @@ async function syncVersion() {
     throw new Error(`Versao invalida em package.json: ${packageJson.version}`);
   }
 
+  // FLOW_MERGE_VERSION / RELEASE_VERSION: release scripts or CI overrides.
+  // package.json is the canonical source for normal dev and for `bun run build`
+  // after a version commit — never let GITHUB_REF_NAME (often set in shells/CI)
+  // override it or local prepare regresses (e.g. 0.2.6 -> 0.2.2).
   const desiredVersion =
     normalizeVersion(process.env.FLOW_MERGE_VERSION) ??
     normalizeVersion(process.env.RELEASE_VERSION) ??
-    normalizeVersion(process.env.GITHUB_REF_NAME) ??
     packageVersion;
 
   const changes: string[] = [];

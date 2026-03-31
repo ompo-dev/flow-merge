@@ -288,7 +288,7 @@ Regra operacional:
 Nao inverta isso.
 
 O `bun run build` executa `bun run version:sync`, mas isso nao corrige uma tag que ja foi criada no commit errado.
-O `version:sync` tambem foi ajustado para nao regredir uma nova versao local so porque o `HEAD` atual ainda e um commit tagueado antigo.
+O `version:sync` nao usa `GITHUB_REF_NAME` para escolher versao (variavel comum em shells e no Actions e podia rebaixar `0.2.6` para `0.2.2` durante o `bun run build`). Com `FLOW_MERGE_VERSION` / `RELEASE_VERSION` ausentes, a fonte e o `version` do `package.json`.
 
 Se voce fizer:
 

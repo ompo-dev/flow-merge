@@ -33,7 +33,7 @@ runBunScript("version:sync", versionEnv);
 ensureVersionFilesMatch(version);
 stageVersionFiles();
 commitVersionBump(version);
-runBunScript("build");
+runBunScript("build", versionEnv);
 ensureCleanWorkingTree();
 
 console.log(`Release ${version} prepared successfully.`);
