@@ -10,7 +10,6 @@ import {
   GitBranch,
   LayoutDashboard,
   LockKeyhole,
-  Network,
   Rows3,
   Sparkles,
   Users,
@@ -20,6 +19,7 @@ import {
   StandardHandles,
   coerceTextValue,
 } from "@/components/nodes/SharedNodeComponents";
+import { BrandMark } from "@/components/ui/BrandMark";
 import type { AppNode } from "@/lib/flow-types";
 import { useAuthStore } from "@/store/useAuthStore";
 
@@ -87,11 +87,11 @@ function asExamples(value: unknown) {
   return Array.isArray(value) ? (value as LandingComponentExample[]) : [];
 }
 
-function focusLandingNode(nodeId: string) {
+function focusLandingNode(nodeId: string, workflowId?: string) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(
     new CustomEvent("flow-merge-focus-node", {
-      detail: { nodeId },
+      detail: { nodeId, workflowId },
     }),
   );
 }
@@ -112,8 +112,12 @@ function LandingHeader({
   return (
     <div className="flex items-start justify-between gap-4 border-b border-[#21262d] px-4 py-3.5">
       <div>
-        <div className="text-[10px] uppercase tracking-[0.18em] text-[#7d8590]">{eyebrow}</div>
-        <div className="mt-2 text-lg font-semibold tracking-[-0.035em] text-[#f0f6fc]">{title}</div>
+        <div className="text-[10px] uppercase tracking-[0.18em] text-[#7d8590]">
+          {eyebrow}
+        </div>
+        <div className="mt-2 text-lg font-semibold tracking-[-0.035em] text-[#f0f6fc]">
+          {title}
+        </div>
       </div>
       {meta ? (
         <div className="rounded-full border border-[#30363d] bg-[#11161d] px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-[#9fb3c8]">
@@ -154,7 +158,13 @@ function LandingChipRow({ chips }: { chips: string[] }) {
   );
 }
 
-function LandingMetricCards({ metrics, compact = false }: { metrics: LandingMetric[]; compact?: boolean }) {
+function LandingMetricCards({
+  metrics,
+  compact = false,
+}: {
+  metrics: LandingMetric[];
+  compact?: boolean;
+}) {
   return (
     <div className={`grid gap-3 ${compact ? "sm:grid-cols-2" : ""}`}>
       {metrics.map((metric) => (
@@ -162,12 +172,18 @@ function LandingMetricCards({ metrics, compact = false }: { metrics: LandingMetr
           key={`${metric.label}-${metric.value}`}
           className="rounded-2xl border border-[#30363d] bg-[#11161d] px-4 py-3"
         >
-          <div className={`${compact ? "text-xl" : "text-2xl"} font-semibold tracking-[-0.04em] text-[#f0f6fc]`}>
+          <div
+            className={`${compact ? "text-xl" : "text-2xl"} font-semibold tracking-[-0.04em] text-[#f0f6fc]`}
+          >
             {metric.value}
           </div>
-          <div className="mt-1 text-[11px] uppercase tracking-[0.14em] text-[#7d8590]">{metric.label}</div>
+          <div className="mt-1 text-[11px] uppercase tracking-[0.14em] text-[#7d8590]">
+            {metric.label}
+          </div>
           {metric.detail ? (
-            <div className="mt-2 text-[11px] leading-5 text-[#8b949e]">{metric.detail}</div>
+            <div className="mt-2 text-[11px] leading-5 text-[#8b949e]">
+              {metric.detail}
+            </div>
           ) : null}
         </div>
       ))}
@@ -183,7 +199,11 @@ function LandingItemGrid({
   columns?: 1 | 2 | 3;
 }) {
   const gridClass =
-    columns === 3 ? "md:grid-cols-3" : columns === 2 ? "md:grid-cols-2" : "grid-cols-1";
+    columns === 3
+      ? "md:grid-cols-3"
+      : columns === 2
+        ? "md:grid-cols-2"
+        : "grid-cols-1";
 
   return (
     <div className={`mt-4 grid gap-3 ${gridClass}`}>
@@ -193,9 +213,13 @@ function LandingItemGrid({
           className="rounded-2xl border border-[#30363d] bg-[#11161d] px-4 py-3"
         >
           <div className="text-sm font-medium text-[#f0f6fc]">{item.title}</div>
-          <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">{item.body}</div>
+          <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">
+            {item.body}
+          </div>
           {item.meta ? (
-            <div className="mt-3 text-[10px] uppercase tracking-[0.14em] text-[#7d8590]">{item.meta}</div>
+            <div className="mt-3 text-[10px] uppercase tracking-[0.14em] text-[#7d8590]">
+              {item.meta}
+            </div>
           ) : null}
         </div>
       ))}
@@ -209,28 +233,39 @@ function LandingHeroNodeComponent({ data, selected }: NodeProps<AppNode>) {
   const chips = Array.isArray(data.chips) ? (data.chips as string[]) : [];
   const metrics = asMetrics(data.metrics);
   const focusNodeId = coerceTextValue(data.focusNodeId);
+  const focusWorkflowId = coerceTextValue(data.focusWorkflowId);
 
   return (
     <div style={{ width: getWidth(data, 860) }}>
-      <NodeContainer selected={selected} accentColor={(data.accent as string) ?? "#58a6ff"}>
+      <NodeContainer
+        selected={selected}
+        accentColor={(data.accent as string) ?? "#58a6ff"}
+      >
         <div className="grid gap-8 px-5 py-5 lg:grid-cols-[minmax(0,1.3fr)_260px]">
           <div>
             <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-[#7d8590]">
-              <Network className="h-3.5 w-3.5 text-[#58a6ff]" />
+              <BrandMark
+                className="h-6 w-6 rounded-xl border-none shadow-none"
+                iconClassName="h-3.5 w-3.5"
+              />
               {coerceTextValue(data.eyebrow, "Flow Merge")}
             </div>
             <div className="mt-4 max-w-[12ch] text-5xl font-semibold leading-[0.92] tracking-[-0.065em] text-[#f0f6fc]">
               {headline}
             </div>
-            <p className="mt-4 max-w-[52ch] text-[15px] leading-7 text-[#8b949e]">{body}</p>
+            <p className="mt-4 max-w-[52ch] text-[15px] leading-7 text-[#8b949e]">
+              {body}
+            </p>
             <LandingChipRow chips={chips} />
 
             <div className="mt-6 grid gap-2 text-[13px] leading-6 text-[#9fb3c8] sm:grid-cols-2">
               <div className="rounded-2xl border border-[#30363d] bg-[#11161d] px-4 py-3">
-                O visitante entra vendo o produto real, nao uma maquete de marketing.
+                O visitante entra vendo o produto real, nao uma maquete de
+                marketing.
               </div>
               <div className="rounded-2xl border border-[#30363d] bg-[#11161d] px-4 py-3">
-                O mesmo canvas aceita mover, apagar, desenhar e exportar a propria homepage.
+                O mesmo canvas aceita mover, apagar, desenhar e exportar a
+                propria homepage.
               </div>
             </div>
 
@@ -239,7 +274,7 @@ function LandingHeroNodeComponent({ data, selected }: NodeProps<AppNode>) {
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
-                  focusLandingNode(focusNodeId);
+                  focusLandingNode(focusNodeId, focusWorkflowId || undefined);
                 }}
                 onMouseDown={(event) => event.stopPropagation()}
                 className="mt-6 inline-flex items-center gap-2 rounded-md bg-[#238636] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#2ea043]"
@@ -262,11 +297,17 @@ function LandingSectionNodeComponent({ data, selected }: NodeProps<AppNode>) {
   const title = coerceTextValue(data.label, "Section");
   const body = coerceTextValue(data.description);
   const items = asItems(data.items);
-  const columns = Math.min(Math.max(Number(data.columns ?? 2), 1), 3) as 1 | 2 | 3;
+  const columns = Math.min(Math.max(Number(data.columns ?? 2), 1), 3) as
+    | 1
+    | 2
+    | 3;
 
   return (
     <div style={{ width: getWidth(data, 520) }}>
-      <NodeContainer selected={selected} accentColor={(data.accent as string) ?? "#58a6ff"}>
+      <NodeContainer
+        selected={selected}
+        accentColor={(data.accent as string) ?? "#58a6ff"}
+      >
         <LandingHeader
           eyebrow={coerceTextValue(data.eyebrow, "Landing section")}
           title={title}
@@ -286,7 +327,10 @@ function LandingPageMapNodeComponent({ data, selected }: NodeProps<AppNode>) {
 
   return (
     <div style={{ width: getWidth(data, 440) }}>
-      <NodeContainer selected={selected} accentColor={(data.accent as string) ?? "#58a6ff"}>
+      <NodeContainer
+        selected={selected}
+        accentColor={(data.accent as string) ?? "#58a6ff"}
+      >
         <LandingHeader
           eyebrow={coerceTextValue(data.eyebrow, "Site map")}
           title={coerceTextValue(data.label, "Flow Merge / Pages")}
@@ -303,12 +347,20 @@ function LandingPageMapNodeComponent({ data, selected }: NodeProps<AppNode>) {
           <div className="rounded-2xl border border-[#30363d] bg-[#11161d] p-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <div className="text-[10px] uppercase tracking-[0.16em] text-[#7d8590]">Site</div>
-                <div className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[#f0f6fc]">Flow Merge</div>
+                <div className="text-[10px] uppercase tracking-[0.16em] text-[#7d8590]">
+                  Site
+                </div>
+                <div className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[#f0f6fc]">
+                  Flow Merge
+                </div>
               </div>
               <div>
-                <div className="text-[10px] uppercase tracking-[0.16em] text-[#7d8590]">Current page</div>
-                <div className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[#f0f6fc]">Landing Page</div>
+                <div className="text-[10px] uppercase tracking-[0.16em] text-[#7d8590]">
+                  Current page
+                </div>
+                <div className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[#f0f6fc]">
+                  Landing Page
+                </div>
               </div>
             </div>
           </div>
@@ -321,9 +373,13 @@ function LandingPageMapNodeComponent({ data, selected }: NodeProps<AppNode>) {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium text-[#f0f6fc]">{page.title}</div>
+                    <div className="text-sm font-medium text-[#f0f6fc]">
+                      {page.title}
+                    </div>
                     {page.slug ? (
-                      <div className="mt-1 font-mono text-[11px] text-[#7d8590]">{page.slug}</div>
+                      <div className="mt-1 font-mono text-[11px] text-[#7d8590]">
+                        {page.slug}
+                      </div>
                     ) : null}
                   </div>
                   {page.status ? (
@@ -332,7 +388,9 @@ function LandingPageMapNodeComponent({ data, selected }: NodeProps<AppNode>) {
                     </div>
                   ) : null}
                 </div>
-                <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">{page.summary}</div>
+                <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">
+                  {page.summary}
+                </div>
               </div>
             ))}
           </div>
@@ -343,12 +401,18 @@ function LandingPageMapNodeComponent({ data, selected }: NodeProps<AppNode>) {
   );
 }
 
-function LandingDifferenceNodeComponent({ data, selected }: NodeProps<AppNode>) {
+function LandingDifferenceNodeComponent({
+  data,
+  selected,
+}: NodeProps<AppNode>) {
   const columns = asColumns(data.columnsContent);
 
   return (
     <div style={{ width: getWidth(data, 940) }}>
-      <NodeContainer selected={selected} accentColor={(data.accent as string) ?? "#58a6ff"}>
+      <NodeContainer
+        selected={selected}
+        accentColor={(data.accent as string) ?? "#58a6ff"}
+      >
         <LandingHeader
           eyebrow={coerceTextValue(data.eyebrow, "Positioning")}
           title={coerceTextValue(data.label, "n8n + PostHog, merged")}
@@ -368,14 +432,21 @@ function LandingDifferenceNodeComponent({ data, selected }: NodeProps<AppNode>) 
                 key={column.title}
                 className="rounded-2xl border border-[#30363d] bg-[#11161d] px-4 py-4"
               >
-                <div className="text-sm font-medium text-[#f0f6fc]">{column.title}</div>
+                <div className="text-sm font-medium text-[#f0f6fc]">
+                  {column.title}
+                </div>
                 {column.summary ? (
-                  <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">{column.summary}</div>
+                  <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">
+                    {column.summary}
+                  </div>
                 ) : null}
                 {column.bullets?.length ? (
                   <div className="mt-4 space-y-2">
                     {column.bullets.map((bullet) => (
-                      <div key={bullet} className="flex items-start gap-2 text-[13px] leading-6 text-[#9fb3c8]">
+                      <div
+                        key={bullet}
+                        className="flex items-start gap-2 text-[13px] leading-6 text-[#9fb3c8]"
+                      >
                         <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-[#3fb950]" />
                         <span>{bullet}</span>
                       </div>
@@ -402,7 +473,10 @@ function LandingWorkflowNodeComponent({ data, selected }: NodeProps<AppNode>) {
 
   return (
     <div style={{ width: getWidth(data, 700) }}>
-      <NodeContainer selected={selected} accentColor={(data.accent as string) ?? "#3fb950"}>
+      <NodeContainer
+        selected={selected}
+        accentColor={(data.accent as string) ?? "#3fb950"}
+      >
         <LandingHeader
           eyebrow={coerceTextValue(data.eyebrow, "Operator flows")}
           title={coerceTextValue(data.label, "Simple flows, clear cases")}
@@ -424,9 +498,13 @@ function LandingWorkflowNodeComponent({ data, selected }: NodeProps<AppNode>) {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium text-[#f0f6fc]">{lane.title}</div>
+                    <div className="text-sm font-medium text-[#f0f6fc]">
+                      {lane.title}
+                    </div>
                     {lane.subtitle ? (
-                      <div className="mt-1 text-[13px] leading-6 text-[#8b949e]">{lane.subtitle}</div>
+                      <div className="mt-1 text-[13px] leading-6 text-[#8b949e]">
+                        {lane.subtitle}
+                      </div>
                     ) : null}
                   </div>
                   <GitBranch className="h-4 w-4 shrink-0 text-[#58a6ff]" />
@@ -434,7 +512,10 @@ function LandingWorkflowNodeComponent({ data, selected }: NodeProps<AppNode>) {
 
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   {lane.steps.map((step, index) => (
-                    <div key={`${lane.title}-${step}`} className="flex items-center gap-2">
+                    <div
+                      key={`${lane.title}-${step}`}
+                      className="flex items-center gap-2"
+                    >
                       <div className="rounded-full border border-[#30363d] bg-[#0d1117] px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-[#9fb3c8]">
                         {step}
                       </div>
@@ -446,7 +527,9 @@ function LandingWorkflowNodeComponent({ data, selected }: NodeProps<AppNode>) {
                 </div>
 
                 {lane.footer ? (
-                  <div className="mt-4 text-[11px] leading-5 text-[#7d8590]">{lane.footer}</div>
+                  <div className="mt-4 text-[11px] leading-5 text-[#7d8590]">
+                    {lane.footer}
+                  </div>
                 ) : null}
               </div>
             ))}
@@ -458,15 +541,24 @@ function LandingWorkflowNodeComponent({ data, selected }: NodeProps<AppNode>) {
   );
 }
 
-function LandingComponentsNodeComponent({ data, selected }: NodeProps<AppNode>) {
+function LandingComponentsNodeComponent({
+  data,
+  selected,
+}: NodeProps<AppNode>) {
   const examples = asExamples(data.examples);
 
   return (
     <div style={{ width: getWidth(data, 660) }}>
-      <NodeContainer selected={selected} accentColor={(data.accent as string) ?? "#58a6ff"}>
+      <NodeContainer
+        selected={selected}
+        accentColor={(data.accent as string) ?? "#58a6ff"}
+      >
         <LandingHeader
           eyebrow={coerceTextValue(data.eyebrow, "Native components")}
-          title={coerceTextValue(data.label, "The landing speaks in product parts")}
+          title={coerceTextValue(
+            data.label,
+            "The landing speaks in product parts",
+          )}
           meta={coerceTextValue(data.meta, "real canvas language")}
         />
         <div className="space-y-4 px-4 py-4">
@@ -485,8 +577,12 @@ function LandingComponentsNodeComponent({ data, selected }: NodeProps<AppNode>) 
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium text-[#f0f6fc]">{example.title}</div>
-                    <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">{example.summary}</div>
+                    <div className="text-sm font-medium text-[#f0f6fc]">
+                      {example.title}
+                    </div>
+                    <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">
+                      {example.summary}
+                    </div>
                   </div>
                   {example.nodeKind ? (
                     <div className="rounded-full border border-[#30363d] px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-[#9fb3c8]">
@@ -535,7 +631,10 @@ function LandingUseCaseNodeComponent({ data, selected }: NodeProps<AppNode>) {
 
   return (
     <div style={{ width: getWidth(data, 820) }}>
-      <NodeContainer selected={selected} accentColor={(data.accent as string) ?? "#3fb950"}>
+      <NodeContainer
+        selected={selected}
+        accentColor={(data.accent as string) ?? "#3fb950"}
+      >
         <LandingHeader
           eyebrow={coerceTextValue(data.eyebrow, "Use cases")}
           title={coerceTextValue(data.label, "What people can actually run")}
@@ -561,7 +660,10 @@ function LandingAudienceNodeComponent({ data, selected }: NodeProps<AppNode>) {
 
   return (
     <div style={{ width: getWidth(data, 540) }}>
-      <NodeContainer selected={selected} accentColor={(data.accent as string) ?? "#d29922"}>
+      <NodeContainer
+        selected={selected}
+        accentColor={(data.accent as string) ?? "#d29922"}
+      >
         <LandingHeader
           eyebrow={coerceTextValue(data.eyebrow, "Audience")}
           title={coerceTextValue(data.label, "Who gets value first")}
@@ -584,8 +686,12 @@ function LandingAudienceNodeComponent({ data, selected }: NodeProps<AppNode>) {
                 <div className="flex items-start gap-2">
                   <Users className="mt-0.5 h-4 w-4 shrink-0 text-[#d29922]" />
                   <div>
-                    <div className="text-sm font-medium text-[#f0f6fc]">{item.title}</div>
-                    <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">{item.body}</div>
+                    <div className="text-sm font-medium text-[#f0f6fc]">
+                      {item.title}
+                    </div>
+                    <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">
+                      {item.body}
+                    </div>
                     {item.meta ? (
                       <div className="mt-3 text-[10px] uppercase tracking-[0.14em] text-[#7d8590]">
                         {item.meta}
@@ -608,7 +714,10 @@ function LandingProofNodeComponent({ data, selected }: NodeProps<AppNode>) {
 
   return (
     <div style={{ width: getWidth(data, 360) }}>
-      <NodeContainer selected={selected} accentColor={(data.accent as string) ?? "#3fb950"}>
+      <NodeContainer
+        selected={selected}
+        accentColor={(data.accent as string) ?? "#3fb950"}
+      >
         <LandingHeader
           eyebrow={coerceTextValue(data.eyebrow, "Proof")}
           title={coerceTextValue(data.label, "Why this format lands")}
@@ -632,13 +741,20 @@ function LandingProofNodeComponent({ data, selected }: NodeProps<AppNode>) {
 function LandingFooterNodeComponent({ data, selected }: NodeProps<AppNode>) {
   const pages = asPages(data.pages);
   const focusNodeId = coerceTextValue(data.focusNodeId);
+  const focusWorkflowId = coerceTextValue(data.focusWorkflowId);
 
   return (
     <div style={{ width: getWidth(data, 980) }}>
-      <NodeContainer selected={selected} accentColor={(data.accent as string) ?? "#58a6ff"}>
+      <NodeContainer
+        selected={selected}
+        accentColor={(data.accent as string) ?? "#58a6ff"}
+      >
         <LandingHeader
           eyebrow={coerceTextValue(data.eyebrow, "Next pages")}
-          title={coerceTextValue(data.label, "The site can grow without leaving the canvas")}
+          title={coerceTextValue(
+            data.label,
+            "The site can grow without leaving the canvas",
+          )}
           meta={coerceTextValue(data.meta, "roadmap-ready")}
         />
         <div className="grid gap-5 px-4 py-4 lg:grid-cols-[minmax(0,1.2fr)_320px]">
@@ -658,9 +774,13 @@ function LandingFooterNodeComponent({ data, selected }: NodeProps<AppNode>) {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-sm font-medium text-[#f0f6fc]">{page.title}</div>
+                      <div className="text-sm font-medium text-[#f0f6fc]">
+                        {page.title}
+                      </div>
                       {page.slug ? (
-                        <div className="mt-1 font-mono text-[11px] text-[#7d8590]">{page.slug}</div>
+                        <div className="mt-1 font-mono text-[11px] text-[#7d8590]">
+                          {page.slug}
+                        </div>
                       ) : null}
                     </div>
                     {page.status ? (
@@ -669,7 +789,9 @@ function LandingFooterNodeComponent({ data, selected }: NodeProps<AppNode>) {
                       </div>
                     ) : null}
                   </div>
-                  <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">{page.summary}</div>
+                  <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">
+                    {page.summary}
+                  </div>
                 </div>
               ))}
             </div>
@@ -682,14 +804,18 @@ function LandingFooterNodeComponent({ data, selected }: NodeProps<AppNode>) {
                 Export the board
               </div>
               <div className="mt-3 text-[13px] leading-6 text-[#8b949e]">
-                Exporte o canvas, marque o que quer mudar e a proxima iteracao pode nascer em cima do proprio JSON.
+                Exporte o canvas, marque o que quer mudar e a proxima iteracao
+                pode nascer em cima do proprio JSON.
               </div>
             </div>
 
             <div className="rounded-2xl border border-[#30363d] bg-[#11161d] p-4">
-              <div className="text-sm font-medium text-[#f0f6fc]">Same surface, more pages</div>
+              <div className="text-sm font-medium text-[#f0f6fc]">
+                Same surface, more pages
+              </div>
               <div className="mt-3 text-[13px] leading-6 text-[#8b949e]">
-                O menu ja esta preparado para pensar em site e paginas, nao so em workflows internos.
+                O menu ja esta preparado para pensar em site e paginas, nao so
+                em workflows internos.
               </div>
             </div>
 
@@ -698,7 +824,7 @@ function LandingFooterNodeComponent({ data, selected }: NodeProps<AppNode>) {
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
-                  focusLandingNode(focusNodeId);
+                  focusLandingNode(focusNodeId, focusWorkflowId || undefined);
                 }}
                 onMouseDown={(event) => event.stopPropagation()}
                 className="inline-flex items-center gap-2 rounded-md bg-[#238636] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#2ea043]"
@@ -721,7 +847,9 @@ function LandingAccessNodeComponent({ data, selected }: NodeProps<AppNode>) {
   const pending = useAuthStore((state) => state.pending);
   const billingPending = useAuthStore((state) => state.billingPending);
   const loginWithGoogle = useAuthStore((state) => state.loginWithGoogle);
-  const requestBillingCharge = useAuthStore((state) => state.requestBillingCharge);
+  const requestBillingCharge = useAuthStore(
+    (state) => state.requestBillingCharge,
+  );
   const [error, setError] = useState("");
   const activeCharge = license.billing.activeCharge;
   const qrCodeImage =
@@ -757,7 +885,10 @@ function LandingAccessNodeComponent({ data, selected }: NodeProps<AppNode>) {
 
   return (
     <div style={{ width: getWidth(data, 420) }}>
-      <NodeContainer selected={selected} accentColor={(data.accent as string) ?? "#1f6feb"}>
+      <NodeContainer
+        selected={selected}
+        accentColor={(data.accent as string) ?? "#1f6feb"}
+      >
         <LandingHeader
           eyebrow={coerceTextValue(data.eyebrow, "Access node")}
           title={coerceTextValue(data.label, "Entrar e liberar o workspace")}
@@ -786,11 +917,13 @@ function LandingAccessNodeComponent({ data, selected }: NodeProps<AppNode>) {
                 <div className="mt-3 space-y-2 text-[13px] leading-6 text-[#8b949e]">
                   <div className="flex items-start gap-2">
                     <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-[#3fb950]" />
-                    Better Auth cuida da sessao e o produto continua local-first.
+                    Better Auth cuida da sessao e o produto continua
+                    local-first.
                   </div>
                   <div className="flex items-start gap-2">
                     <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-[#3fb950]" />
-                    Trial de 14 dias com automacao, analytics, A/B e funil no mesmo canvas.
+                    Trial de 14 dias com automacao, analytics, A/B e funil no
+                    mesmo canvas.
                   </div>
                 </div>
               </div>
@@ -811,6 +944,12 @@ function LandingAccessNodeComponent({ data, selected }: NodeProps<AppNode>) {
                 {pending ? "Redirecionando..." : "Entrar com Google"}
                 <ArrowRight className="h-4 w-4" />
               </button>
+
+              <div className="mt-3 text-[11px] leading-5 text-[#7d8590]">
+                Ao continuar com Google, voce aceita os Termos de Uso, a
+                Responsabilidade Operacional e a Politica de Privacidade do Flow
+                Merge para web e desktop.
+              </div>
             </>
           ) : (
             <>
@@ -820,20 +959,28 @@ function LandingAccessNodeComponent({ data, selected }: NodeProps<AppNode>) {
                     {session.name.slice(0, 1).toUpperCase()}
                   </div>
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-[#f0f6fc]">{session.name}</div>
-                    <div className="truncate text-[12px] text-[#7d8590]">{session.email}</div>
+                    <div className="truncate text-sm font-medium text-[#f0f6fc]">
+                      {session.name}
+                    </div>
+                    <div className="truncate text-[12px] text-[#7d8590]">
+                      {session.email}
+                    </div>
                   </div>
                 </div>
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl border border-[#21262d] bg-[#0d1117] px-3 py-3">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-[#7d8590]">Estado</div>
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-[#7d8590]">
+                      Estado
+                    </div>
                     <div className="mt-2 text-sm font-medium text-[#f0f6fc]">
                       {license.accessState ?? "sem sessao"}
                     </div>
                   </div>
                   <div className="rounded-2xl border border-[#21262d] bg-[#0d1117] px-3 py-3">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-[#7d8590]">Prazo atual</div>
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-[#7d8590]">
+                      Prazo atual
+                    </div>
                     <div className="mt-2 text-sm font-medium text-[#f0f6fc]">
                       {license.timeline.paymentDueAt
                         ? formatLandingDate(license.timeline.paymentDueAt)
@@ -845,9 +992,12 @@ function LandingAccessNodeComponent({ data, selected }: NodeProps<AppNode>) {
 
               {license.billing.activeCharge ? (
                 <div className="mt-4 rounded-2xl border border-[#30363d] bg-[#11161d] p-4">
-                  <div className="text-sm font-medium text-[#f0f6fc]">PIX pronto para pagamento</div>
+                  <div className="text-sm font-medium text-[#f0f6fc]">
+                    PIX pronto para pagamento
+                  </div>
                   <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">
-                    O acesso continua por enquanto, mas bloqueia em {formatLandingDate(license.timeline.paymentDueAt)}.
+                    O acesso continua por enquanto, mas bloqueia em{" "}
+                    {formatLandingDate(license.timeline.paymentDueAt)}.
                   </div>
 
                   {qrCodeImage ? (
@@ -879,8 +1029,12 @@ function LandingAccessNodeComponent({ data, selected }: NodeProps<AppNode>) {
                     }}
                     className="rounded-2xl border border-[#30363d] bg-[#11161d] px-4 py-4 text-left transition-colors hover:border-[#1f6feb] hover:bg-[#0f1a2b] disabled:opacity-60"
                   >
-                    <div className="text-sm font-medium text-[#f0f6fc]">Pro Mensal</div>
-                    <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">R$89 via PIX, renovacao manual por ciclo.</div>
+                    <div className="text-sm font-medium text-[#f0f6fc]">
+                      Pro Mensal
+                    </div>
+                    <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">
+                      R$89 via PIX, renovacao manual por ciclo.
+                    </div>
                   </button>
                   <button
                     type="button"
@@ -890,8 +1044,12 @@ function LandingAccessNodeComponent({ data, selected }: NodeProps<AppNode>) {
                     }}
                     className="rounded-2xl border border-[#30363d] bg-[#11161d] px-4 py-4 text-left transition-colors hover:border-[#3fb950] hover:bg-[#102019] disabled:opacity-60"
                   >
-                    <div className="text-sm font-medium text-[#f0f6fc]">Founder Lifetime</div>
-                    <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">R$1.068 para liberar o core single-user.</div>
+                    <div className="text-sm font-medium text-[#f0f6fc]">
+                      Founder Lifetime
+                    </div>
+                    <div className="mt-2 text-[13px] leading-6 text-[#8b949e]">
+                      R$1.068 para liberar o core single-user.
+                    </div>
                   </button>
                 </div>
               )}
@@ -916,7 +1074,13 @@ function LandingAccessNodeComponent({ data, selected }: NodeProps<AppNode>) {
               </div>
               <div className="flex items-start gap-2">
                 <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-[#3fb950]" />
-                Se atrasar 7 dias, bloqueia. Se passar 14 dias bloqueado, apaga tudo.
+                Quando o prazo fecha, abre 7 dias para pagar; depois bloqueia
+                por mais 7 antes da delecao total.
+              </div>
+              <div className="flex items-start gap-2">
+                <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-[#3fb950]" />
+                Ao criar a conta com Google, o uso passa a seguir os termos,
+                responsabilidade e privacidade da pagina legal.
               </div>
             </div>
           </div>

@@ -39,6 +39,7 @@ import ShapeNode from "@/components/nodes/ShapeNode";
 import TriggerNode from "@/components/nodes/TriggerNode";
 import VizNode from "@/components/nodes/VizNode";
 import type { AppNode, ToolMode, WorkflowNodeData } from "@/lib/flow-types";
+import { LANDING_PROJECT_ID } from "@/lib/public-pages";
 import { useActiveWorkflow, useFlowStore } from "@/store/useFlowStore";
 
 const nodeTypes = {
@@ -60,7 +61,13 @@ const nodeTypes = {
   landingAccessNode: LandingAccessNode,
 } as unknown as NodeTypes;
 
-const drawingTools: ToolMode[] = ["rect", "ellipse", "diamond", "arrow", "text"];
+const drawingTools: ToolMode[] = [
+  "rect",
+  "ellipse",
+  "diamond",
+  "arrow",
+  "text",
+];
 const EMPTY_NODES: AppNode[] = [];
 const EMPTY_EDGES: Edge[] = [];
 
@@ -73,12 +80,21 @@ interface DrawState {
 
 type NavigationDirection = "up" | "down" | "left" | "right";
 
+interface LandingFocusDetail {
+  nodeId?: string;
+  workflowId?: string;
+}
+
 export interface CanvasAppProps {
   mode?: "app" | "landing";
   onAccessClick?: () => void;
 }
 
-function isCandidateInDirection(dx: number, dy: number, direction: NavigationDirection) {
+function isCandidateInDirection(
+  dx: number,
+  dy: number,
+  direction: NavigationDirection,
+) {
   const threshold = 8;
 
   if (direction === "left") return dx < -threshold;
@@ -87,7 +103,11 @@ function isCandidateInDirection(dx: number, dy: number, direction: NavigationDir
   return dy > threshold;
 }
 
-function getDirectionScore(dx: number, dy: number, direction: NavigationDirection) {
+function getDirectionScore(
+  dx: number,
+  dy: number,
+  direction: NavigationDirection,
+) {
   if (direction === "left" || direction === "right") {
     return Math.abs(dx) + Math.abs(dy) * 0.45;
   }
@@ -102,6 +122,8 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
   const onConnect = useFlowStore((state) => state.onConnect);
   const selectedNodeId = useFlowStore((state) => state.selectedNodeId);
   const setSelectedNodeId = useFlowStore((state) => state.setSelectedNodeId);
+  const setActiveProject = useFlowStore((state) => state.setActiveProject);
+  const setActiveWorkflow = useFlowStore((state) => state.setActiveWorkflow);
   const contextNodeIds = useFlowStore((state) => state.contextNodeIds);
   const toggleContextNode = useFlowStore((state) => state.toggleContextNode);
   const clearContextNodes = useFlowStore((state) => state.clearContextNodes);
@@ -113,11 +135,17 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
   const deleteNode = useFlowStore((state) => state.deleteNode);
   const deleteNodes = useFlowStore((state) => state.deleteNodes);
   const isAddNodePanelOpen = useFlowStore((state) => state.isAddNodePanelOpen);
-  const { fitBounds, fitView, getViewport, screenToFlowPosition, setViewport } = useReactFlow();
+  const { fitBounds, fitView, getViewport, screenToFlowPosition, setViewport } =
+    useReactFlow();
   const [drawState, setDrawState] = useState<DrawState | null>(null);
-  const restoreViewportRef = useRef<{ x: number; y: number; zoom: number } | null>(null);
+  const restoreViewportRef = useRef<{
+    x: number;
+    y: number;
+    zoom: number;
+  } | null>(null);
   const focusedNodeIdRef = useRef<string | null>(null);
   const initialViewportWorkflowRef = useRef<string | null>(null);
+  const pendingLandingFocusRef = useRef<LandingFocusDetail | null>(null);
 
   const nodes = activeWorkflow?.nodes ?? EMPTY_NODES;
   const edges = activeWorkflow?.edges ?? EMPTY_EDGES;
@@ -150,10 +178,14 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
       };
     }
     if (node.type === "vizNode") {
-      if (node.data.nodeType === "viz_metric") return { width: 220, height: 124 };
-      if (node.data.nodeType === "viz_chart") return { width: 320, height: 154 };
-      if (node.data.nodeType === "viz_table") return { width: 340, height: 168 };
-      if (node.data.nodeType === "viz_report") return { width: 300, height: 292 };
+      if (node.data.nodeType === "viz_metric")
+        return { width: 220, height: 124 };
+      if (node.data.nodeType === "viz_chart")
+        return { width: 320, height: 154 };
+      if (node.data.nodeType === "viz_table")
+        return { width: 340, height: 168 };
+      if (node.data.nodeType === "viz_report")
+        return { width: 300, height: 292 };
       return { width: 280, height: 188 };
     }
 
@@ -285,7 +317,15 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
       setSelectedNodeId(nextNode.id);
       focusNode(nextNode.id);
     },
-    [edges, focusNode, getNodeById, getNodeCenter, selectedNodeId, setRightClickCtx, setSelectedNodeId],
+    [
+      edges,
+      focusNode,
+      getNodeById,
+      getNodeCenter,
+      selectedNodeId,
+      setRightClickCtx,
+      setSelectedNodeId,
+    ],
   );
 
   useEffect(() => {
@@ -299,7 +339,9 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
     const frameId = window.requestAnimationFrame(() => {
       if (isLandingMode) {
         const topSectionBounds = getNodesBounds(
-          nodes.filter((node) => node.type !== "shapeNode" && node.position.y < 620),
+          nodes.filter(
+            (node) => node.type !== "shapeNode" && node.position.y < 620,
+          ),
         );
 
         if (topSectionBounds) {
@@ -312,32 +354,97 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
     });
 
     return () => window.cancelAnimationFrame(frameId);
-  }, [activeWorkflow?.id, fitBounds, fitView, getNodesBounds, isLandingMode, nodes]);
+  }, [
+    activeWorkflow?.id,
+    fitBounds,
+    fitView,
+    getNodesBounds,
+    isLandingMode,
+    nodes,
+  ]);
 
   useEffect(() => {
     if (!isLandingMode) return;
 
     const onFocusLandingNode = (event: Event) => {
-      const customEvent = event as CustomEvent<{ nodeId?: string }>;
+      const customEvent = event as CustomEvent<LandingFocusDetail>;
       const nextNodeId = customEvent.detail?.nodeId;
       if (!nextNodeId) return;
 
+      const nextWorkflowId = customEvent.detail?.workflowId;
+
+      if (nextWorkflowId && nextWorkflowId !== activeWorkflow?.id) {
+        pendingLandingFocusRef.current = {
+          nodeId: nextNodeId,
+          workflowId: nextWorkflowId,
+        };
+        setActiveProject(LANDING_PROJECT_ID);
+        setActiveWorkflow(nextWorkflowId);
+        return;
+      }
+
+      pendingLandingFocusRef.current = null;
       clearContextNodes();
       setRightClickCtx(null);
       setSelectedNodeId(nextNodeId);
-      focusNode(nextNodeId);
+      window.requestAnimationFrame(() => {
+        focusNode(nextNodeId);
+      });
     };
 
     window.addEventListener("flow-merge-focus-node", onFocusLandingNode);
-    return () => window.removeEventListener("flow-merge-focus-node", onFocusLandingNode);
-  }, [clearContextNodes, focusNode, isLandingMode, setRightClickCtx, setSelectedNodeId]);
+    return () =>
+      window.removeEventListener("flow-merge-focus-node", onFocusLandingNode);
+  }, [
+    activeWorkflow?.id,
+    clearContextNodes,
+    focusNode,
+    isLandingMode,
+    setActiveProject,
+    setActiveWorkflow,
+    setRightClickCtx,
+    setSelectedNodeId,
+  ]);
+
+  useEffect(() => {
+    if (!isLandingMode) return;
+
+    const pendingFocus = pendingLandingFocusRef.current;
+    if (!pendingFocus?.nodeId) return;
+    if (
+      pendingFocus.workflowId &&
+      pendingFocus.workflowId !== activeWorkflow?.id
+    ) {
+      return;
+    }
+    if (!getNodeById(pendingFocus.nodeId)) return;
+
+    pendingLandingFocusRef.current = null;
+    clearContextNodes();
+    setRightClickCtx(null);
+    setSelectedNodeId(pendingFocus.nodeId);
+    window.requestAnimationFrame(() => {
+      focusNode(pendingFocus.nodeId!);
+    });
+  }, [
+    activeWorkflow?.id,
+    clearContextNodes,
+    focusNode,
+    getNodeById,
+    isLandingMode,
+    nodes,
+    setRightClickCtx,
+    setSelectedNodeId,
+  ]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA") return;
 
-      const directionMap: Partial<Record<KeyboardEvent["key"], NavigationDirection>> = {
+      const directionMap: Partial<
+        Record<KeyboardEvent["key"], NavigationDirection>
+      > = {
         ArrowUp: "up",
         ArrowDown: "down",
         ArrowLeft: "left",
@@ -434,7 +541,12 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
     setSelectedNodeId(null);
     clearContextNodes();
     setRightClickCtx(null);
-  }, [clearContextNodes, restoreFocusedViewport, setSelectedNodeId, setRightClickCtx]);
+  }, [
+    clearContextNodes,
+    restoreFocusedViewport,
+    setSelectedNodeId,
+    setRightClickCtx,
+  ]);
 
   const onPaneContextMenu = useCallback(
     (event: MouseEvent | React.MouseEvent) => {
@@ -459,7 +571,10 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
       event.preventDefault();
       event.stopPropagation();
 
-      const flowPosition = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      const flowPosition = screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
       if (activeTool === "text") {
         addNode({
           id: uuidv4(),
@@ -500,7 +615,10 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
   const handleDrawEnd = useCallback(
     (event: React.MouseEvent) => {
       if (!drawState) return;
-      const endFlow = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      const endFlow = screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
       const width = Math.abs(endFlow.x - drawState.startFlow.x);
       const height = Math.abs(endFlow.y - drawState.startFlow.y);
       const position = {
@@ -543,23 +661,54 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
     const x = Math.min(drawState.startScreen.x, drawState.currentScreen.x);
     const y = Math.min(drawState.startScreen.y, drawState.currentScreen.y);
     const width = Math.abs(drawState.currentScreen.x - drawState.startScreen.x);
-    const height = Math.abs(drawState.currentScreen.y - drawState.startScreen.y);
+    const height = Math.abs(
+      drawState.currentScreen.y - drawState.startScreen.y,
+    );
     const fill = "rgba(31,111,235,0.08)";
     const stroke = "#1f6feb";
 
     return (
       <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
         {drawState.tool === "rect" ? (
-          <rect x={x} y={y} width={width} height={height} rx={4} fill={fill} stroke={stroke} strokeDasharray="4 3" />
+          <rect
+            x={x}
+            y={y}
+            width={width}
+            height={height}
+            rx={4}
+            fill={fill}
+            stroke={stroke}
+            strokeDasharray="4 3"
+          />
         ) : null}
         {drawState.tool === "ellipse" ? (
-          <ellipse cx={x + width / 2} cy={y + height / 2} rx={width / 2} ry={height / 2} fill={fill} stroke={stroke} strokeDasharray="4 3" />
+          <ellipse
+            cx={x + width / 2}
+            cy={y + height / 2}
+            rx={width / 2}
+            ry={height / 2}
+            fill={fill}
+            stroke={stroke}
+            strokeDasharray="4 3"
+          />
         ) : null}
         {drawState.tool === "diamond" ? (
-          <polygon points={`${x + width / 2},${y} ${x + width},${y + height / 2} ${x + width / 2},${y + height} ${x},${y + height / 2}`} fill={fill} stroke={stroke} strokeDasharray="4 3" />
+          <polygon
+            points={`${x + width / 2},${y} ${x + width},${y + height / 2} ${x + width / 2},${y + height} ${x},${y + height / 2}`}
+            fill={fill}
+            stroke={stroke}
+            strokeDasharray="4 3"
+          />
         ) : null}
         {drawState.tool === "arrow" ? (
-          <line x1={drawState.startScreen.x} y1={drawState.startScreen.y} x2={drawState.currentScreen.x} y2={drawState.currentScreen.y} stroke={stroke} strokeDasharray="4 3" />
+          <line
+            x1={drawState.startScreen.x}
+            y1={drawState.startScreen.y}
+            x2={drawState.currentScreen.x}
+            y2={drawState.currentScreen.y}
+            stroke={stroke}
+            strokeDasharray="4 3"
+          />
         ) : null}
       </svg>
     );
@@ -573,7 +722,10 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
           contextNodeIds.includes(node.id)
             ? {
                 ...node,
-                dragHandle: node.type === "dashboardNode" ? ".dashboard-node-drag-handle" : node.dragHandle,
+                dragHandle:
+                  node.type === "dashboardNode"
+                    ? ".dashboard-node-drag-handle"
+                    : node.dragHandle,
                 selected: true,
                 style: {
                   ...(node.style ?? {}),
@@ -583,12 +735,18 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
             : selectedNodeId === node.id
               ? {
                   ...node,
-                  dragHandle: node.type === "dashboardNode" ? ".dashboard-node-drag-handle" : node.dragHandle,
+                  dragHandle:
+                    node.type === "dashboardNode"
+                      ? ".dashboard-node-drag-handle"
+                      : node.dragHandle,
                   selected: true,
                 }
               : {
                   ...node,
-                  dragHandle: node.type === "dashboardNode" ? ".dashboard-node-drag-handle" : node.dragHandle,
+                  dragHandle:
+                    node.type === "dashboardNode"
+                      ? ".dashboard-node-drag-handle"
+                      : node.dragHandle,
                   selected: false,
                 },
         )}
@@ -601,9 +759,13 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
         onPaneContextMenu={onPaneContextMenu}
         nodeTypes={nodeTypes}
         selectionMode={SelectionMode.Partial}
-        panOnDrag={activeTool === "hand" ? [0, 1, 2] : isDrawingMode ? false : [1, 2]}
+        panOnDrag={
+          activeTool === "hand" ? [0, 1, 2] : isDrawingMode ? false : [1, 2]
+        }
         panOnScroll={isLandingMode || activeTool === "hand"}
-        panOnScrollMode={isLandingMode ? PanOnScrollMode.Vertical : PanOnScrollMode.Free}
+        panOnScrollMode={
+          isLandingMode ? PanOnScrollMode.Vertical : PanOnScrollMode.Free
+        }
         zoomOnScroll={!isLandingMode}
         minZoom={0.1}
         maxZoom={3}
@@ -624,10 +786,15 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
         <Controls position="bottom-right" showInteractive={false} />
         <MiniMap
           position="bottom-right"
-          style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 6 }}
+          style={{
+            background: "#161b22",
+            border: "1px solid #30363d",
+            borderRadius: 6,
+          }}
           nodeColor={(node) => {
             if (node.type === "triggerNode") return "#d29922";
-            if (node.type === "vizNode" || node.type === "dashboardNode") return "#3fb950";
+            if (node.type === "vizNode" || node.type === "dashboardNode")
+              return "#3fb950";
             if (node.type === "shapeNode") return "#30363d";
             return "#1f6feb";
           }}
@@ -659,7 +826,10 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
   );
 }
 
-export default function CanvasApp({ mode = "app", onAccessClick }: CanvasAppProps) {
+export default function CanvasApp({
+  mode = "app",
+  onAccessClick,
+}: CanvasAppProps) {
   return (
     <ReactFlowProvider>
       <div className="relative h-screen w-screen overflow-hidden bg-[#0d1117]">

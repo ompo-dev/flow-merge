@@ -4,20 +4,46 @@ import { useEffect } from "react";
 import { CanvasEntry } from "@/components/canvas/CanvasEntry";
 import {
   DEFAULT_LANDING_WORKFLOW_ID,
+  LEGAL_LANDING_WORKFLOW_ID,
+  LANDING_HOME_ACCESS_NODE_ID,
+  LANDING_LEGAL_ACCESS_NODE_ID,
   LANDING_PROJECT_ID,
-} from "@/lib/mock-data";
+} from "@/lib/public-pages";
 import { useFlowStore } from "@/store/useFlowStore";
 
-function focusAccessNode() {
+interface LandingPageProps {
+  initialWorkflowId?: string;
+}
+
+function getLandingAccessTarget(workflowId: string) {
+  if (workflowId === LEGAL_LANDING_WORKFLOW_ID) {
+    return {
+      workflowId: LEGAL_LANDING_WORKFLOW_ID,
+      nodeId: LANDING_LEGAL_ACCESS_NODE_ID,
+    };
+  }
+
+  return {
+    workflowId: DEFAULT_LANDING_WORKFLOW_ID,
+    nodeId: LANDING_HOME_ACCESS_NODE_ID,
+  };
+}
+
+function focusAccessNode(workflowId: string) {
+  const target = getLandingAccessTarget(workflowId);
   if (typeof window === "undefined") return;
   window.dispatchEvent(
     new CustomEvent("flow-merge-focus-node", {
-      detail: { nodeId: "landing-home-access" },
+      detail: target,
     }),
   );
 }
 
-export function LandingPage() {
+export function LandingPage({
+  initialWorkflowId = DEFAULT_LANDING_WORKFLOW_ID,
+}: LandingPageProps) {
+  const activeWorkflowId = useFlowStore((state) => state.activeWorkflowId);
+
   useEffect(() => {
     const state = useFlowStore.getState();
     const previous = {
@@ -41,8 +67,8 @@ export function LandingPage() {
     if (state.projects.some((project) => project.id === LANDING_PROJECT_ID)) {
       state.setActiveProject(LANDING_PROJECT_ID);
     }
-    if (state.workflows.some((workflow) => workflow.id === DEFAULT_LANDING_WORKFLOW_ID)) {
-      state.setActiveWorkflow(DEFAULT_LANDING_WORKFLOW_ID);
+    if (state.workflows.some((workflow) => workflow.id === initialWorkflowId)) {
+      state.setActiveWorkflow(initialWorkflowId);
     }
 
     return () => {
@@ -54,16 +80,29 @@ export function LandingPage() {
       current.setShowSettings(previous.showSettings);
       current.setChatExpanded(previous.chatExpanded);
 
-      if (current.projects.some((project) => project.id === previous.activeProjectId)) {
+      if (
+        current.projects.some(
+          (project) => project.id === previous.activeProjectId,
+        )
+      ) {
         current.setActiveProject(previous.activeProjectId);
       }
-      if (current.workflows.some((workflow) => workflow.id === previous.activeWorkflowId)) {
+      if (
+        current.workflows.some(
+          (workflow) => workflow.id === previous.activeWorkflowId,
+        )
+      ) {
         current.setActiveWorkflow(previous.activeWorkflowId);
       }
 
       current.setSelectedNodeId(previous.selectedNodeId);
     };
-  }, []);
+  }, [initialWorkflowId]);
 
-  return <CanvasEntry mode="landing" onAccessClick={focusAccessNode} />;
+  return (
+    <CanvasEntry
+      mode="landing"
+      onAccessClick={() => focusAccessNode(activeWorkflowId)}
+    />
+  );
 }

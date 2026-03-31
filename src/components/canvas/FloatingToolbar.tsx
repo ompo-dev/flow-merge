@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Check,
   ChevronDown,
@@ -15,8 +16,13 @@ import {
   X,
 } from "lucide-react";
 import { SettingsModalView } from "@/components/canvas/SettingsModalView";
-import { useActiveProject, useActiveWorkflow, useFlowStore } from "@/store/useFlowStore";
+import {
+  useActiveProject,
+  useActiveWorkflow,
+  useFlowStore,
+} from "@/store/useFlowStore";
 import type { Project, Workflow } from "@/lib/flow-types";
+import { getLandingRouteByWorkflowId } from "@/lib/site";
 
 /*
 function SettingsModal({ onClose }: { onClose: () => void }) {
@@ -320,14 +326,27 @@ function ImportJsonModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState("");
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="fc-panel w-[560px] p-5" onClick={(event) => event.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
+      <div
+        className="fc-panel w-[560px] p-5"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-semibold text-[#e6edf3]">Import JSON</div>
-            <div className="text-[11px] text-[#7d8590]">Cole o JSON do workflow atual.</div>
+            <div className="text-sm font-semibold text-[#e6edf3]">
+              Import JSON
+            </div>
+            <div className="text-[11px] text-[#7d8590]">
+              Cole o JSON do workflow atual.
+            </div>
           </div>
-          <button onClick={onClose} className="rounded p-1 text-[#7d8590] hover:bg-[#21262d] hover:text-[#e6edf3]">
+          <button
+            onClick={onClose}
+            className="rounded p-1 text-[#7d8590] hover:bg-[#21262d] hover:text-[#e6edf3]"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -341,7 +360,9 @@ function ImportJsonModal({ onClose }: { onClose: () => void }) {
           placeholder='{"name":"My Workflow","nodes":[],"edges":[]}'
           className="mt-4 h-72 w-full resize-none rounded-md border border-[#30363d] bg-[#0d1117] px-3 py-2 font-mono text-[11px] text-[#e6edf3] outline-none placeholder:text-[#3d444d] focus:border-[#1f6feb]"
         />
-        {error ? <div className="mt-2 text-[11px] text-[#f85149]">{error}</div> : null}
+        {error ? (
+          <div className="mt-2 text-[11px] text-[#f85149]">{error}</div>
+        ) : null}
 
         <div className="mt-4 flex items-center justify-end gap-2">
           <button
@@ -387,7 +408,9 @@ function ProjectDropdown({
   const setActiveProject = useFlowStore((state) => state.setActiveProject);
   const createProject = useFlowStore((state) => state.createProject);
   const deleteProject = useFlowStore((state) => state.deleteProject);
-  const toggleProjectActive = useFlowStore((state) => state.toggleProjectActive);
+  const toggleProjectActive = useFlowStore(
+    (state) => state.toggleProjectActive,
+  );
   const executions = useFlowStore((state) => state.executions);
   const isLandingMode = mode === "landing";
 
@@ -398,10 +421,22 @@ function ProjectDropdown({
       </div>
       <div className="max-h-[320px] overflow-y-auto py-1">
         {projects.map((project) => {
-          const projectWorkflows = workflows.filter((workflow) => workflow.projectId === project.id);
-          const workflowIds = new Set(projectWorkflows.map((workflow) => workflow.id));
-          const projectExecutions = executions.filter((execution) => workflowIds.has(execution.workflowId));
-          const errorCount = projectExecutions.filter((execution) => execution.status === "error").length;
+          const projectWorkflows = workflows.filter(
+            (workflow) =>
+              workflow.projectId === project.id &&
+              (!isLandingMode ||
+                (workflow.surface === "landing" &&
+                  workflow.tags.includes("page"))),
+          );
+          const workflowIds = new Set(
+            projectWorkflows.map((workflow) => workflow.id),
+          );
+          const projectExecutions = executions.filter((execution) =>
+            workflowIds.has(execution.workflowId),
+          );
+          const errorCount = projectExecutions.filter(
+            (execution) => execution.status === "error",
+          ).length;
           const isActive = project.id === activeProjectId;
 
           return (
@@ -434,10 +469,18 @@ function ProjectDropdown({
                     <div className="flex items-center gap-2">
                       <span
                         className="h-2 w-2 rounded-full"
-                        style={{ background: project.active ? project.accent ?? "#1f6feb" : "#3d444d" }}
+                        style={{
+                          background: project.active
+                            ? (project.accent ?? "#1f6feb")
+                            : "#3d444d",
+                        }}
                       />
-                      <div className="truncate text-[12px] font-medium text-[#e6edf3]">{project.name}</div>
-                      {isActive ? <Check className="h-3 w-3 text-[#58a6ff]" /> : null}
+                      <div className="truncate text-[12px] font-medium text-[#e6edf3]">
+                        {project.name}
+                      </div>
+                      {isActive ? (
+                        <Check className="h-3 w-3 text-[#58a6ff]" />
+                      ) : null}
                     </div>
                     {project.description ? (
                       <div className="mt-1 pl-4 text-[10px] leading-relaxed text-[#7d8590]">
@@ -446,8 +489,19 @@ function ProjectDropdown({
                     ) : null}
                   </div>
                   <div className="text-right text-[10px] text-[#7d8590]">
-                    <div>{projectWorkflows.length} {isLandingMode ? "pages" : "workflows"}</div>
-                    <div style={{ color: project.active ? (errorCount > 0 ? "#f85149" : "#3fb950") : "#7d8590" }}>
+                    <div>
+                      {projectWorkflows.length}{" "}
+                      {isLandingMode ? "pages" : "workflows"}
+                    </div>
+                    <div
+                      style={{
+                        color: project.active
+                          ? errorCount > 0
+                            ? "#f85149"
+                            : "#3fb950"
+                          : "#7d8590",
+                      }}
+                    >
                       {isLandingMode
                         ? project.active
                           ? "interactive"
@@ -519,13 +573,28 @@ function WorkflowDropdown({
   mode?: "app" | "landing";
   readOnly?: boolean;
 }) {
+  const router = useRouter();
   const setActiveWorkflow = useFlowStore((state) => state.setActiveWorkflow);
   const createWorkflow = useFlowStore((state) => state.createWorkflow);
   const duplicateWorkflow = useFlowStore((state) => state.duplicateWorkflow);
   const deleteWorkflow = useFlowStore((state) => state.deleteWorkflow);
-  const toggleWorkflowActive = useFlowStore((state) => state.toggleWorkflowActive);
+  const toggleWorkflowActive = useFlowStore(
+    (state) => state.toggleWorkflowActive,
+  );
   const executions = useFlowStore((state) => state.executions);
   const isLandingMode = mode === "landing";
+  const openWorkflow = (workflowId: string) => {
+    setActiveWorkflow(workflowId);
+
+    if (isLandingMode) {
+      const landingRoute = getLandingRouteByWorkflowId(workflowId);
+      if (landingRoute) {
+        router.push(landingRoute);
+      }
+    }
+
+    onClose();
+  };
 
   return (
     <div className="fc-panel absolute left-0 top-10 z-50 w-[320px] overflow-hidden">
@@ -535,8 +604,12 @@ function WorkflowDropdown({
       <div className="max-h-[340px] overflow-y-auto py-1">
         {workflows.map((workflow) => {
           const isActive = workflow.id === activeWorkflowId;
-          const workflowExecutions = executions.filter((execution) => execution.workflowId === workflow.id);
-          const errorCount = workflowExecutions.filter((execution) => execution.status === "error").length;
+          const workflowExecutions = executions.filter(
+            (execution) => execution.workflowId === workflow.id,
+          );
+          const errorCount = workflowExecutions.filter(
+            (execution) => execution.status === "error",
+          ).length;
 
           return (
             <div
@@ -551,14 +624,12 @@ function WorkflowDropdown({
                 role="button"
                 tabIndex={0}
                 onClick={() => {
-                  setActiveWorkflow(workflow.id);
-                  onClose();
+                  openWorkflow(workflow.id);
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    setActiveWorkflow(workflow.id);
-                    onClose();
+                    openWorkflow(workflow.id);
                   }
                 }}
                 className="px-4 py-3 text-left"
@@ -568,13 +639,21 @@ function WorkflowDropdown({
                     <div className="flex items-center gap-2">
                       <span
                         className="h-2 w-2 shrink-0 rounded-full"
-                        style={{ background: workflow.accent ?? "#3d444d", opacity: workflow.active ? 1 : 0.45 }}
+                        style={{
+                          background: workflow.accent ?? "#3d444d",
+                          opacity: workflow.active ? 1 : 0.45,
+                        }}
                       />
-                      <div className="truncate text-[12px] font-medium text-[#e6edf3]">{workflow.name}</div>
+                      <div className="truncate text-[12px] font-medium text-[#e6edf3]">
+                        {workflow.name}
+                      </div>
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {workflow.tags.map((tag) => (
-                        <span key={tag} className="rounded border border-[#30363d] px-1.5 py-0.5 text-[9px] text-[#7d8590]">
+                        <span
+                          key={tag}
+                          className="rounded border border-[#30363d] px-1.5 py-0.5 text-[9px] text-[#7d8590]"
+                        >
                           {tag}
                         </span>
                       ))}
@@ -582,7 +661,9 @@ function WorkflowDropdown({
                   </div>
                   <div className="text-right text-[10px] text-[#7d8590]">
                     <div>{workflow.nodes.length} nodes</div>
-                    <div style={{ color: errorCount > 0 ? "#f85149" : "#3fb950" }}>
+                    <div
+                      style={{ color: errorCount > 0 ? "#f85149" : "#3fb950" }}
+                    >
                       {isLandingMode
                         ? workflow.active
                           ? "live page"
@@ -668,13 +749,16 @@ export function FloatingToolbar({
   const updater = useFlowStore((state) => state.updater);
   const isLandingMode = mode === "landing";
   const isLandingPageWorkflow = useMemo(
-    () => (workflow: Workflow) => workflow.surface === "landing" && workflow.tags.includes("page"),
+    () => (workflow: Workflow) =>
+      workflow.surface === "landing" && workflow.tags.includes("page"),
     [],
   );
   const visibleProjects = useMemo(
     () =>
       projects.filter((project) =>
-        isLandingMode ? project.surface === "landing" : project.surface !== "landing",
+        isLandingMode
+          ? project.surface === "landing"
+          : project.surface !== "landing",
       ),
     [isLandingMode, projects],
   );
@@ -687,15 +771,20 @@ export function FloatingToolbar({
       workflows.filter(
         (workflow) =>
           visibleProjectIds.has(workflow.projectId) &&
-          (isLandingMode ? isLandingPageWorkflow(workflow) : workflow.surface !== "landing"),
+          (isLandingMode
+            ? isLandingPageWorkflow(workflow)
+            : workflow.surface !== "landing"),
       ),
     [isLandingMode, isLandingPageWorkflow, visibleProjectIds, workflows],
   );
   const currentProjectId = visibleProjectIds.has(activeProjectId)
     ? activeProjectId
-    : visibleProjects[0]?.id ?? "";
+    : (visibleProjects[0]?.id ?? "");
   const filteredWorkflows = useMemo(
-    () => visibleWorkflows.filter((workflow) => workflow.projectId === currentProjectId),
+    () =>
+      visibleWorkflows.filter(
+        (workflow) => workflow.projectId === currentProjectId,
+      ),
     [currentProjectId, visibleWorkflows],
   );
   const visibleWorkflowIds = useMemo(
@@ -704,11 +793,13 @@ export function FloatingToolbar({
   );
   const currentWorkflowId = visibleWorkflowIds.has(activeWorkflowId)
     ? activeWorkflowId
-    : filteredWorkflows[0]?.id ?? "";
+    : (filteredWorkflows[0]?.id ?? "");
   const currentProject =
-    visibleProjects.find((project) => project.id === currentProjectId) ?? activeProject;
+    visibleProjects.find((project) => project.id === currentProjectId) ??
+    activeProject;
   const currentWorkflow =
-    filteredWorkflows.find((workflow) => workflow.id === currentWorkflowId) ?? activeWorkflow;
+    filteredWorkflows.find((workflow) => workflow.id === currentWorkflowId) ??
+    activeWorkflow;
   const [editingName, setEditingName] = useState(false);
   const [localName, setLocalName] = useState(currentWorkflow?.name ?? "");
   const [showProjectDropdown, setShowProjectDropdown] = useState(false);
@@ -755,120 +846,127 @@ export function FloatingToolbar({
       <div className="absolute left-1/2 top-3 z-50 max-w-[calc(100vw-24px)] -translate-x-1/2">
         <div className="fc-panel flex items-center overflow-visible whitespace-nowrap">
           <div className="relative">
-          <button
-            onClick={() => {
-              setShowProjectDropdown((current) => !current);
-              setShowWorkflowDropdown(false);
-            }}
-            className="flex items-center gap-2 border-r border-[#30363d] px-3 py-2 text-xs"
-          >
-            <span
-              className="h-2 w-2 rounded-full"
-              style={{
-                background: currentProject?.active ? currentProject?.accent ?? "#1f6feb" : "#3d444d",
+            <button
+              onClick={() => {
+                setShowProjectDropdown((current) => !current);
+                setShowWorkflowDropdown(false);
               }}
-            />
-            <span className="max-w-[150px] truncate font-medium text-[#e6edf3]">
-              {currentProject?.name ?? "Select project"}
-            </span>
-            <ChevronDown className="h-3.5 w-3.5 text-[#7d8590]" />
-          </button>
-          {showProjectDropdown ? (
-            <ProjectDropdown
-              projects={visibleProjects}
-              workflows={visibleWorkflows}
-              activeProjectId={currentProjectId}
-              onClose={() => setShowProjectDropdown(false)}
-              mode={mode}
-              readOnly={isLandingMode}
-            />
-          ) : null}
+              className="flex items-center gap-2 border-r border-[#30363d] px-3 py-2 text-xs"
+            >
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{
+                  background: currentProject?.active
+                    ? (currentProject?.accent ?? "#1f6feb")
+                    : "#3d444d",
+                }}
+              />
+              <span className="max-w-[150px] truncate font-medium text-[#e6edf3]">
+                {currentProject?.name ?? "Select project"}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 text-[#7d8590]" />
+            </button>
+            {showProjectDropdown ? (
+              <ProjectDropdown
+                projects={visibleProjects}
+                workflows={visibleWorkflows}
+                activeProjectId={currentProjectId}
+                onClose={() => setShowProjectDropdown(false)}
+                mode={mode}
+                readOnly={isLandingMode}
+              />
+            ) : null}
           </div>
 
           <div className="relative">
-          <button
-            onClick={() => {
-              setShowWorkflowDropdown((current) => !current);
-              setShowProjectDropdown(false);
-            }}
-            className="flex items-center gap-2 border-r border-[#30363d] px-3 py-2 text-xs"
-          >
-            <span
-              className="h-2 w-2 rounded-full"
-              style={{
-                background: currentWorkflow?.accent ?? "#3d444d",
-                opacity: currentWorkflow?.active ? 1 : 0.45,
+            <button
+              onClick={() => {
+                setShowWorkflowDropdown((current) => !current);
+                setShowProjectDropdown(false);
               }}
-            />
-            {editingName && !isLandingMode ? (
-              <input
-                autoFocus
-                value={localName}
-                onChange={(event) => setLocalName(event.target.value)}
-                onBlur={() => {
-                  if (currentWorkflow) renameWorkflow(currentWorkflow.id, localName);
-                  setEditingName(false);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && currentWorkflow) {
-                    renameWorkflow(currentWorkflow.id, localName);
-                    setEditingName(false);
-                  }
-                  if (event.key === "Escape") {
-                    setEditingName(false);
-                    setLocalName(currentWorkflow?.name ?? "");
-                  }
-                }}
-                onClick={(event) => event.stopPropagation()}
-                className="w-[180px] rounded border border-[#1f6feb] bg-[#0d1117] px-2 py-1 text-xs text-[#e6edf3] outline-none"
-              />
-            ) : (
+              className="flex items-center gap-2 border-r border-[#30363d] px-3 py-2 text-xs"
+            >
               <span
-                onDoubleClick={(event) => {
-                  if (isLandingMode) return;
-                  event.stopPropagation();
-                  if (!currentWorkflow) return;
-                  setEditingName(true);
-                  setLocalName(currentWorkflow.name);
+                className="h-2 w-2 rounded-full"
+                style={{
+                  background: currentWorkflow?.accent ?? "#3d444d",
+                  opacity: currentWorkflow?.active ? 1 : 0.45,
                 }}
-                className="max-w-[190px] truncate font-medium text-[#e6edf3]"
-              >
-                {currentWorkflow?.name ?? "No workflow"}
-              </span>
-            )}
-            <ChevronDown className="h-3.5 w-3.5 text-[#7d8590]" />
-          </button>
-          {showWorkflowDropdown ? (
-            <WorkflowDropdown
-              workflows={filteredWorkflows}
-              activeWorkflowId={currentWorkflowId}
-              onClose={() => setShowWorkflowDropdown(false)}
-              mode={mode}
-              readOnly={isLandingMode}
-            />
-          ) : null}
+              />
+              {editingName && !isLandingMode ? (
+                <input
+                  autoFocus
+                  value={localName}
+                  onChange={(event) => setLocalName(event.target.value)}
+                  onBlur={() => {
+                    if (currentWorkflow)
+                      renameWorkflow(currentWorkflow.id, localName);
+                    setEditingName(false);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && currentWorkflow) {
+                      renameWorkflow(currentWorkflow.id, localName);
+                      setEditingName(false);
+                    }
+                    if (event.key === "Escape") {
+                      setEditingName(false);
+                      setLocalName(currentWorkflow?.name ?? "");
+                    }
+                  }}
+                  onClick={(event) => event.stopPropagation()}
+                  className="w-[180px] rounded border border-[#1f6feb] bg-[#0d1117] px-2 py-1 text-xs text-[#e6edf3] outline-none"
+                />
+              ) : (
+                <span
+                  onDoubleClick={(event) => {
+                    if (isLandingMode) return;
+                    event.stopPropagation();
+                    if (!currentWorkflow) return;
+                    setEditingName(true);
+                    setLocalName(currentWorkflow.name);
+                  }}
+                  className="max-w-[190px] truncate font-medium text-[#e6edf3]"
+                >
+                  {currentWorkflow?.name ?? "No workflow"}
+                </span>
+              )}
+              <ChevronDown className="h-3.5 w-3.5 text-[#7d8590]" />
+            </button>
+            {showWorkflowDropdown ? (
+              <WorkflowDropdown
+                workflows={filteredWorkflows}
+                activeWorkflowId={currentWorkflowId}
+                onClose={() => setShowWorkflowDropdown(false)}
+                mode={mode}
+                readOnly={isLandingMode}
+              />
+            ) : null}
           </div>
 
           {isLandingMode ? (
             <>
-            <button
-              type="button"
-              className="flex items-center gap-2 border-r border-[#30363d] px-3 py-2 text-xs text-[#7d8590]"
-            >
-              <FileText className="h-3.5 w-3.5 text-[#58a6ff]" />
-              Interactive page
-            </button>
+              <button
+                type="button"
+                className="flex items-center gap-2 border-r border-[#30363d] px-3 py-2 text-xs text-[#7d8590]"
+              >
+                <FileText className="h-3.5 w-3.5 text-[#58a6ff]" />
+                Interactive page
+              </button>
 
-            <button
-              onClick={exportWorkflow}
-              disabled={!currentWorkflow}
-              className={`flex h-full items-center justify-center border-r border-[#30363d] px-3 transition-colors hover:bg-[#21262d] disabled:opacity-40 ${
-                copiedExport ? "text-[#58a6ff]" : "text-[#7d8590] hover:text-[#e6edf3]"
-              }`}
-              title={copiedExport ? "Copied to clipboard" : "Export canvas JSON"}
-            >
-              <Download className="h-3.5 w-3.5" />
-            </button>
+              <button
+                onClick={exportWorkflow}
+                disabled={!currentWorkflow}
+                className={`flex h-full items-center justify-center border-r border-[#30363d] px-3 transition-colors hover:bg-[#21262d] disabled:opacity-40 ${
+                  copiedExport
+                    ? "text-[#58a6ff]"
+                    : "text-[#7d8590] hover:text-[#e6edf3]"
+                }`}
+                title={
+                  copiedExport ? "Copied to clipboard" : "Export canvas JSON"
+                }
+              >
+                <Download className="h-3.5 w-3.5" />
+              </button>
             </>
           ) : null}
 
@@ -883,100 +981,106 @@ export function FloatingToolbar({
             </button>
           ) : (
             <>
-            <button
-              onClick={() => setAddNodePanel(true)}
-              className="flex items-center gap-2 border-r border-[#30363d] px-3 py-2 text-xs text-[#7d8590] transition-colors hover:bg-[#21262d] hover:text-[#e6edf3]"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add node
-            </button>
-
-            <button
-              onClick={() => {
-                void runWorkflow();
-              }}
-              disabled={!currentWorkflow || !currentProject?.active}
-              className="flex items-center gap-2 border-r border-[#30363d] px-3 py-2 text-xs text-[#3fb950] transition-colors hover:bg-[#21262d] disabled:opacity-40"
-            >
-              <Play className="h-3.5 w-3.5" />
-              Run
-            </button>
-
-            <button
-              onClick={saveWorkflow}
-              disabled={!currentWorkflow}
-              className="flex h-full items-center justify-center border-r border-[#30363d] px-3 text-[#7d8590] transition-colors hover:bg-[#21262d] hover:text-[#e6edf3] disabled:opacity-40"
-              title="Save"
-            >
-              <Save className="h-3.5 w-3.5" />
-            </button>
-
-            <button
-              onClick={exportWorkflow}
-              disabled={!currentWorkflow}
-              className={`flex h-full items-center justify-center border-r border-[#30363d] px-3 transition-colors hover:bg-[#21262d] disabled:opacity-40 ${
-                copiedExport ? "text-[#58a6ff]" : "text-[#7d8590] hover:text-[#e6edf3]"
-              }`}
-              title={copiedExport ? "Copied to clipboard" : "Copy JSON"}
-            >
-              <Download className="h-3.5 w-3.5" />
-            </button>
-
-            <button
-              onClick={() => setShowImportModal(true)}
-              disabled={!currentWorkflow}
-              className="flex h-full items-center justify-center border-r border-[#30363d] px-3 text-[#7d8590] transition-colors hover:bg-[#21262d] hover:text-[#e6edf3] disabled:opacity-40"
-              title="Import JSON"
-            >
-              <Upload className="h-3.5 w-3.5" />
-            </button>
-
-            {updater.enabled &&
-            (updater.updateState === "available" ||
-              updater.updateState === "downloading" ||
-              updater.updateState === "ready_to_install" ||
-              updater.updateState === "error") ? (
               <button
-                onClick={() => setShowSettings(true)}
-                className={`flex items-center gap-2 border-r border-[#30363d] px-3 py-2 text-xs transition-colors hover:bg-[#21262d] ${
-                  updater.updateState === "ready_to_install"
-                    ? "text-[#3fb950]"
-                    : updater.updateState === "error"
-                      ? "text-[#f85149]"
-                      : "text-[#58a6ff]"
-                }`}
-                title="Desktop updates"
+                onClick={() => setAddNodePanel(true)}
+                className="flex items-center gap-2 border-r border-[#30363d] px-3 py-2 text-xs text-[#7d8590] transition-colors hover:bg-[#21262d] hover:text-[#e6edf3]"
               >
-                {updater.updateState === "downloading" ? (
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Download className="h-3.5 w-3.5" />
-                )}
-                {updater.updateState === "ready_to_install"
-                  ? "Update pronto"
-                  : updater.updateState === "error"
-                    ? "Update falhou"
-                    : updater.updateState === "downloading"
-                      ? "Baixando"
-                      : "Update"}
+                <Plus className="h-3.5 w-3.5" />
+                Add node
               </button>
-            ) : null}
 
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              data-testid="toolbar-settings-button"
-              className="flex h-full items-center justify-center px-3 text-[#7d8590] transition-colors hover:bg-[#21262d] hover:text-[#e6edf3]"
-              title="Settings"
-            >
-              <Settings className="h-3.5 w-3.5" />
-            </button>
+              <button
+                onClick={() => {
+                  void runWorkflow();
+                }}
+                disabled={!currentWorkflow || !currentProject?.active}
+                className="flex items-center gap-2 border-r border-[#30363d] px-3 py-2 text-xs text-[#3fb950] transition-colors hover:bg-[#21262d] disabled:opacity-40"
+              >
+                <Play className="h-3.5 w-3.5" />
+                Run
+              </button>
+
+              <button
+                onClick={saveWorkflow}
+                disabled={!currentWorkflow}
+                className="flex h-full items-center justify-center border-r border-[#30363d] px-3 text-[#7d8590] transition-colors hover:bg-[#21262d] hover:text-[#e6edf3] disabled:opacity-40"
+                title="Save"
+              >
+                <Save className="h-3.5 w-3.5" />
+              </button>
+
+              <button
+                onClick={exportWorkflow}
+                disabled={!currentWorkflow}
+                className={`flex h-full items-center justify-center border-r border-[#30363d] px-3 transition-colors hover:bg-[#21262d] disabled:opacity-40 ${
+                  copiedExport
+                    ? "text-[#58a6ff]"
+                    : "text-[#7d8590] hover:text-[#e6edf3]"
+                }`}
+                title={copiedExport ? "Copied to clipboard" : "Copy JSON"}
+              >
+                <Download className="h-3.5 w-3.5" />
+              </button>
+
+              <button
+                onClick={() => setShowImportModal(true)}
+                disabled={!currentWorkflow}
+                className="flex h-full items-center justify-center border-r border-[#30363d] px-3 text-[#7d8590] transition-colors hover:bg-[#21262d] hover:text-[#e6edf3] disabled:opacity-40"
+                title="Import JSON"
+              >
+                <Upload className="h-3.5 w-3.5" />
+              </button>
+
+              {updater.enabled &&
+              (updater.updateState === "available" ||
+                updater.updateState === "downloading" ||
+                updater.updateState === "ready_to_install" ||
+                updater.updateState === "error") ? (
+                <button
+                  onClick={() => setShowSettings(true)}
+                  className={`flex items-center gap-2 border-r border-[#30363d] px-3 py-2 text-xs transition-colors hover:bg-[#21262d] ${
+                    updater.updateState === "ready_to_install"
+                      ? "text-[#3fb950]"
+                      : updater.updateState === "error"
+                        ? "text-[#f85149]"
+                        : "text-[#58a6ff]"
+                  }`}
+                  title="Desktop updates"
+                >
+                  {updater.updateState === "downloading" ? (
+                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5" />
+                  )}
+                  {updater.updateState === "ready_to_install"
+                    ? "Update pronto"
+                    : updater.updateState === "error"
+                      ? "Update falhou"
+                      : updater.updateState === "downloading"
+                        ? "Baixando"
+                        : "Update"}
+                </button>
+              ) : null}
+
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                data-testid="toolbar-settings-button"
+                className="flex h-full items-center justify-center px-3 text-[#7d8590] transition-colors hover:bg-[#21262d] hover:text-[#e6edf3]"
+                title="Settings"
+              >
+                <Settings className="h-3.5 w-3.5" />
+              </button>
             </>
           )}
         </div>
       </div>
 
-      {!isLandingMode && showSettings ? <SettingsModal onClose={() => setShowSettings(false)} /> : null}
-      {!isLandingMode && showImportModal ? <ImportJsonModal onClose={() => setShowImportModal(false)} /> : null}
+      {!isLandingMode && showSettings ? (
+        <SettingsModal onClose={() => setShowSettings(false)} />
+      ) : null}
+      {!isLandingMode && showImportModal ? (
+        <ImportJsonModal onClose={() => setShowImportModal(false)} />
+      ) : null}
     </>
   );
 }

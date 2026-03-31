@@ -11,53 +11,47 @@ PUBLIC_DIR = ROOT / "public"
 TAURI_DIR = ROOT / "src-tauri"
 
 SIZE = 1024
-PADDING = 96
-RADIUS = 238
-NODE_SIZE = 154
-STROKE = 92
+PADDING = 92
+RADIUS = 236
+NODE_SIZE = 170
+STROKE = 66
+GITHUB_GREEN = "#2da44e"
+GITHUB_GREEN_BORDER = "#238636"
+GLYPH = "#f0f6fc"
 
-
-def icon_palette(kind: str) -> dict[str, str]:
-    if kind == "light":
-        return {
-            "bg": "#2da44e",
-            "border": "#238636",
-            "glyph": "#0d1117",
-            "glow": "#20803d",
-            "sheen": "#55c776",
-        }
-
+def icon_palette() -> dict[str, str]:
     return {
-        "bg": "#161b22",
-        "border": "#30363d",
-        "glyph": "#f0f6fc",
-        "glow": "#2da44e",
-        "sheen": "#2a313c",
+        "bg": GITHUB_GREEN,
+        "border": GITHUB_GREEN_BORDER,
+        "glyph": GLYPH,
+        "glow": "#1f7a38",
+        "sheen": "#63d481",
     }
 
 
 def build_geometry() -> dict[str, tuple[int, int]]:
     center_x = SIZE // 2
-    center_y = 500
+    center_y = 520
     return {
-        "left": (center_x - 214, 312),
-        "right": (center_x + 214, 312),
-        "bottom": (center_x, 734),
-        "center": (center_x, center_y),
+        "top": (center_x, 242),
+        "left": (center_x - 288, 726),
+        "right": (center_x + 288, 726),
+        "junction": (center_x, center_y),
     }
 
 
-def draw_icon(kind: str, size: int = SIZE) -> Image.Image:
-    palette = icon_palette(kind)
+def draw_icon(size: int = SIZE) -> Image.Image:
+    palette = icon_palette()
     scale = size / SIZE
     pad = int(PADDING * scale)
     radius = int(RADIUS * scale)
     node_size = int(NODE_SIZE * scale)
     stroke = int(STROKE * scale)
-    border_width = max(4, int(12 * scale))
+    border_width = max(4, int(10 * scale))
     inset = max(8, int(18 * scale))
     glow_radius = max(8, int(24 * scale))
     shadow_offset = max(6, int(12 * scale))
+    node_radius = max(18, int(34 * scale))
 
     geometry = build_geometry()
     geometry = {
@@ -73,7 +67,7 @@ def draw_icon(kind: str, size: int = SIZE) -> Image.Image:
     glow_draw.rounded_rectangle(
         (pad, pad, size - pad, size - pad),
         radius=radius,
-        fill=hex_to_rgba(palette["glow"], 110 if kind == "dark" else 70),
+        fill=hex_to_rgba(palette["glow"], 86),
     )
     glow = glow.filter(ImageFilter.GaussianBlur(glow_radius))
     image.alpha_composite(glow)
@@ -106,49 +100,38 @@ def draw_icon(kind: str, size: int = SIZE) -> Image.Image:
 
     line_draw = ImageDraw.Draw(image)
     line_draw.line(
-        [geometry["left"], geometry["center"], geometry["right"]],
+        [geometry["left"], geometry["junction"], geometry["right"]],
         fill=palette["glyph"],
         width=stroke,
         joint="curve",
     )
     line_draw.line(
-        [geometry["center"], geometry["bottom"]],
+        [geometry["junction"], geometry["top"]],
         fill=palette["glyph"],
         width=stroke,
     )
 
-    junction_radius = max(18, int(34 * scale))
-    line_draw.ellipse(
-        (
-            geometry["center"][0] - junction_radius,
-            geometry["center"][1] - junction_radius,
-            geometry["center"][0] + junction_radius,
-            geometry["center"][1] + junction_radius,
-        ),
-        fill=palette["glyph"],
-    )
-
-    for key in ("left", "right", "bottom"):
+    for key in ("left", "right", "top"):
         cx, cy = geometry[key]
         half = node_size // 2
         line_draw.rounded_rectangle(
             (cx - half, cy - half, cx + half, cy + half),
-            radius=max(18, int(40 * scale)),
-            fill=palette["glyph"],
+            radius=node_radius,
+            outline=palette["glyph"],
+            width=max(12, int(24 * scale)),
         )
 
     return image
 
 
-def build_svg(kind: str) -> str:
-    palette = icon_palette(kind)
+def build_svg() -> str:
+    palette = icon_palette()
     geometry = build_geometry()
 
     pad = PADDING
     inner_pad = 114
     inner_radius = RADIUS - 22
     half = NODE_SIZE // 2
-    junction_radius = 34
 
     return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {SIZE} {SIZE}" fill="none">
   <defs>
@@ -160,12 +143,11 @@ def build_svg(kind: str) -> str:
     <rect x="{pad}" y="{pad}" width="{SIZE - pad * 2}" height="{SIZE - pad * 2}" rx="{RADIUS}" fill="{escape(palette["bg"])}" stroke="{escape(palette["border"])}" stroke-width="12"/>
     <rect x="{inner_pad}" y="{inner_pad}" width="{SIZE - inner_pad * 2}" height="{SIZE - inner_pad * 2}" rx="{inner_radius}" stroke="{escape(palette["sheen"])}" stroke-opacity="0.45" stroke-width="6"/>
   </g>
-  <path d="M {geometry["left"][0]} {geometry["left"][1]} L {geometry["center"][0]} {geometry["center"][1]} L {geometry["right"][0]} {geometry["right"][1]}" stroke="{escape(palette["glyph"])}" stroke-width="{STROKE}" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M {geometry["center"][0]} {geometry["center"][1]} L {geometry["bottom"][0]} {geometry["bottom"][1]}" stroke="{escape(palette["glyph"])}" stroke-width="{STROKE}" stroke-linecap="round"/>
-  <circle cx="{geometry["center"][0]}" cy="{geometry["center"][1]}" r="{junction_radius}" fill="{escape(palette["glyph"])}"/>
-  <rect x="{geometry["left"][0] - half}" y="{geometry["left"][1] - half}" width="{NODE_SIZE}" height="{NODE_SIZE}" rx="40" fill="{escape(palette["glyph"])}"/>
-  <rect x="{geometry["right"][0] - half}" y="{geometry["right"][1] - half}" width="{NODE_SIZE}" height="{NODE_SIZE}" rx="40" fill="{escape(palette["glyph"])}"/>
-  <rect x="{geometry["bottom"][0] - half}" y="{geometry["bottom"][1] - half}" width="{NODE_SIZE}" height="{NODE_SIZE}" rx="40" fill="{escape(palette["glyph"])}"/>
+  <path d="M {geometry["left"][0]} {geometry["left"][1]} V {geometry["junction"][1] - 54} C {geometry["left"][0]} {geometry["junction"][1] - 24}, {geometry["left"][0] + 30} {geometry["junction"][1]}, {geometry["left"][0] + 64} {geometry["junction"][1]} H {geometry["right"][0] - 64} C {geometry["right"][0] - 30} {geometry["junction"][1]}, {geometry["right"][0]} {geometry["junction"][1] - 24}, {geometry["right"][0]} {geometry["junction"][1] - 54} V {geometry["right"][1]}" stroke="{escape(palette["glyph"])}" stroke-width="{STROKE}" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M {geometry["junction"][0]} {geometry["junction"][1]} V {geometry["top"][1] + half}" stroke="{escape(palette["glyph"])}" stroke-width="{STROKE}" stroke-linecap="round"/>
+  <rect x="{geometry["left"][0] - half}" y="{geometry["left"][1] - half}" width="{NODE_SIZE}" height="{NODE_SIZE}" rx="44" stroke="{escape(palette["glyph"])}" stroke-width="28"/>
+  <rect x="{geometry["right"][0] - half}" y="{geometry["right"][1] - half}" width="{NODE_SIZE}" height="{NODE_SIZE}" rx="44" stroke="{escape(palette["glyph"])}" stroke-width="28"/>
+  <rect x="{geometry["top"][0] - half}" y="{geometry["top"][1] - half}" width="{NODE_SIZE}" height="{NODE_SIZE}" rx="44" stroke="{escape(palette["glyph"])}" stroke-width="28"/>
 </svg>
 """
 
@@ -179,16 +161,16 @@ def main() -> None:
     PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
     TAURI_DIR.mkdir(parents=True, exist_ok=True)
 
-    dark_png = draw_icon("dark", SIZE)
-    light_png = draw_icon("light", SIZE)
+    brand_png = draw_icon(SIZE)
 
-    dark_png.save(TAURI_DIR / "icon-desktop.png")
-    dark_png.save(PUBLIC_DIR / "icon-dark.png")
-    light_png.save(PUBLIC_DIR / "icon-light.png")
-    light_png.resize((180, 180), Image.Resampling.LANCZOS).save(PUBLIC_DIR / "apple-touch-icon.png")
+    brand_png.save(TAURI_DIR / "icon-desktop.png")
+    brand_png.save(PUBLIC_DIR / "icon-dark.png")
+    brand_png.save(PUBLIC_DIR / "icon-light.png")
+    brand_png.resize((180, 180), Image.Resampling.LANCZOS).save(PUBLIC_DIR / "apple-touch-icon.png")
 
-    (PUBLIC_DIR / "icon-dark.svg").write_text(build_svg("dark"), encoding="utf-8")
-    (PUBLIC_DIR / "icon-light.svg").write_text(build_svg("light"), encoding="utf-8")
+    svg = build_svg()
+    (PUBLIC_DIR / "icon-dark.svg").write_text(svg, encoding="utf-8")
+    (PUBLIC_DIR / "icon-light.svg").write_text(svg, encoding="utf-8")
 
 
 if __name__ == "__main__":

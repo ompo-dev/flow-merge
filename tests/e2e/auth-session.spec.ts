@@ -60,7 +60,11 @@ test("signs out from the account modal and returns to the landing surface", asyn
   await page.getByTestId("settings-tab-account").click();
   await page.getByTestId("account-signout-button").click();
 
-  await expect(page.getByText("Automacao e analytics no mesmo canvas.")).toBeVisible();
+  await expect(
+    page
+      .getByTestId("rf__node-landing-home-hero")
+      .getByText("Automacao e analytics no mesmo canvas."),
+  ).toBeVisible();
   await expect(page.getByTestId("toolbar-settings-button")).toHaveCount(0);
 
   const storageSnapshot = await page.evaluate(() => ({

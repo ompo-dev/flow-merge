@@ -5,13 +5,12 @@
     </filter>
   </defs>
   <g filter="url(#shadow)">
-    <rect x="96" y="96" width="832" height="832" rx="238" fill="#2da44e" stroke="#238636" stroke-width="12"/>
-    <rect x="114" y="114" width="796" height="796" rx="216" stroke="#55c776" stroke-opacity="0.45" stroke-width="6"/>
+    <rect x="92" y="92" width="840" height="840" rx="236" fill="#2da44e" stroke="#238636" stroke-width="12"/>
+    <rect x="114" y="114" width="796" height="796" rx="214" stroke="#63d481" stroke-opacity="0.45" stroke-width="6"/>
   </g>
-  <path d="M 298 312 L 512 500 L 726 312" stroke="#0d1117" stroke-width="92" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M 512 500 L 512 734" stroke="#0d1117" stroke-width="92" stroke-linecap="round"/>
-  <circle cx="512" cy="500" r="34" fill="#0d1117"/>
-  <rect x="221" y="235" width="154" height="154" rx="40" fill="#0d1117"/>
-  <rect x="649" y="235" width="154" height="154" rx="40" fill="#0d1117"/>
-  <rect x="435" y="657" width="154" height="154" rx="40" fill="#0d1117"/>
+  <path d="M 224 726 V 466 C 224 496, 254 520, 288 520 H 736 C 770 520, 800 496, 800 466 V 726" stroke="#f0f6fc" stroke-width="66" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 512 520 V 327" stroke="#f0f6fc" stroke-width="66" stroke-linecap="round"/>
+  <rect x="139" y="641" width="170" height="170" rx="44" stroke="#f0f6fc" stroke-width="28"/>
+  <rect x="715" y="641" width="170" height="170" rx="44" stroke="#f0f6fc" stroke-width="28"/>
+  <rect x="427" y="157" width="170" height="170" rx="44" stroke="#f0f6fc" stroke-width="28"/>
 </svg>

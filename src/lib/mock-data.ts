@@ -9,6 +9,13 @@ import type {
   Workflow,
   WorkflowNodeData,
 } from "@/lib/flow-types";
+import {
+  DEFAULT_LANDING_WORKFLOW_ID,
+  LANDING_HOME_ACCESS_NODE_ID,
+  LANDING_LEGAL_ACCESS_NODE_ID,
+  LANDING_PROJECT_ID,
+  LEGAL_LANDING_WORKFLOW_ID,
+} from "@/lib/public-pages";
 
 function nowIso(offsetMs = 0) {
   return new Date(Date.now() + offsetMs).toISOString();
@@ -102,9 +109,6 @@ function makeLandingNode(
     } as WorkflowNodeData,
   };
 }
-
-export const LANDING_PROJECT_ID = "proj_landing";
-export const DEFAULT_LANDING_WORKFLOW_ID = "wf_landing_overview";
 
 export function createMockProjects(): Project[] {
   return [
@@ -421,7 +425,8 @@ export function createMockWorkflows(): Workflow[] {
           "google login",
           "pix simples",
         ],
-        focusNodeId: "landing-home-access",
+        focusNodeId: LANDING_HOME_ACCESS_NODE_ID,
+        focusWorkflowId: DEFAULT_LANDING_WORKFLOW_ID,
         metrics: [
           {
             value: "1 canvas",
@@ -472,15 +477,14 @@ export function createMockWorkflows(): Workflow[] {
             title: "Docs",
             slug: "/docs",
             status: "later",
-            summary:
-              "Guias de setup, playbooks e templates de operator loops.",
+            summary: "Guias de setup, playbooks e templates de operator loops.",
           },
           {
-            title: "Policies",
-            slug: "/policies",
-            status: "later",
+            title: "Termos de Uso",
+            slug: "/legal",
+            status: "live",
             summary:
-              "Politicas e termos no mesmo sistema visual do produto.",
+              "Termos, responsabilidade operacional e privacidade dentro da mesma shell.",
           },
         ],
       },
@@ -495,13 +499,13 @@ export function createMockWorkflows(): Workflow[] {
         eyebrow: "Access node",
         meta: "google + trial + pix",
         description:
-          "Login com Google libera o workspace local. O backend segura so identidade, licenca e cobranca; seus workflows e runtime continuam fora do banco.",
+          "Login com Google libera o workspace local e ja vincula o uso aos termos, responsabilidade operacional e politica de privacidade. O backend segura so identidade, licenca e cobranca; seus workflows e runtime continuam fora do banco.",
       },
     ),
     makeLandingNode(
       "landing-home-difference",
       "landingDifferenceNode",
-      { x: 740, y: 800 },
+      { x: 740, y: 960 },
       { width: 960, height: 500 },
       {
         label: "O que esta sendo unido aqui",
@@ -534,8 +538,7 @@ export function createMockWorkflows(): Workflow[] {
           },
           {
             title: "Flow Merge junta",
-            summary:
-              "O insight nasce no mesmo canvas que executa a resposta.",
+            summary: "O insight nasce no mesmo canvas que executa a resposta.",
             bullets: [
               "Erro pode virar perda estimada em R$",
               "Funil e A/B podem disparar uma acao no mesmo lugar",
@@ -549,7 +552,7 @@ export function createMockWorkflows(): Workflow[] {
     makeLandingNode(
       "landing-home-workflow",
       "landingWorkflowNode",
-      { x: 240, y: 2320 },
+      { x: 980, y: 2540 },
       { width: 720, height: 520 },
       {
         label: "Casos ancora do lancamento",
@@ -568,21 +571,16 @@ export function createMockWorkflows(): Workflow[] {
           },
           {
             title: "Funil + A/B -> decisao",
-            subtitle: "Eventos viram comparacao, leitura de queda e ajuste de produto.",
+            subtitle:
+              "Eventos viram comparacao, leitura de queda e ajuste de produto.",
             steps: ["Event", "Segment", "Compare", "Decide", "Ship"],
-            footer:
-              "O mesmo fluxo mede conversao e prepara a proxima acao.",
+            footer: "O mesmo fluxo mede conversao e prepara a proxima acao.",
           },
           {
             title: "Padrao comportamental -> acao comercial",
-            subtitle: "Comportamento de compra vira insight e campanha contextual.",
-            steps: [
-              "Cart",
-              "Detect pattern",
-              "Score",
-              "Coupon",
-              "Measure",
-            ],
+            subtitle:
+              "Comportamento de compra vira insight e campanha contextual.",
+            steps: ["Cart", "Detect pattern", "Score", "Coupon", "Measure"],
             footer:
               "Bom para mostrar promocoes, nudges e monetizacao guiada por padrao real.",
           },
@@ -592,7 +590,7 @@ export function createMockWorkflows(): Workflow[] {
     makeLandingNode(
       "landing-home-components",
       "landingComponentsNode",
-      { x: 1020, y: 2320 },
+      { x: 240, y: 3120 },
       { width: 700, height: 520 },
       {
         label: "Linguagem nativa do produto",
@@ -635,7 +633,7 @@ export function createMockWorkflows(): Workflow[] {
     makeLandingNode(
       "landing-home-usecases",
       "landingUseCaseNode",
-      { x: 860, y: 1840 },
+      { x: 860, y: 1980 },
       { width: 840, height: 540 },
       {
         label: "O que voce consegue rodar hoje",
@@ -670,7 +668,7 @@ export function createMockWorkflows(): Workflow[] {
     makeLandingNode(
       "landing-home-audience",
       "landingAudienceNode",
-      { x: 240, y: 3080 },
+      { x: 240, y: 2300 },
       { width: 560, height: 540 },
       {
         label: "Quem sente valor primeiro",
@@ -722,13 +720,13 @@ export function createMockWorkflows(): Workflow[] {
           {
             value: "PIX",
             label: "mensal ou vitalicio",
-            detail:
-              "Cobranca direta para o publico Brasil-first do v1.",
+            detail: "Cobranca direta para o publico Brasil-first do v1.",
           },
           {
-            value: "7 + 14",
-            label: "grace e delecao",
-            detail: "Fluxo comercial claro: trial, cobranca, bloqueio e limpeza final.",
+            value: "7 + 7",
+            label: "prazo e delecao",
+            detail:
+              "Fluxo comercial claro: trial, cobranca, bloqueio e limpeza final.",
           },
           {
             value: "local",
@@ -742,15 +740,16 @@ export function createMockWorkflows(): Workflow[] {
     makeLandingNode(
       "landing-home-footer",
       "landingFooterNode",
-      { x: 700, y: 1360 },
+      { x: 700, y: 1460 },
       { width: 1020, height: 420 },
       {
         label: "O site e o produto falam a mesma lingua",
         eyebrow: "Site shell",
         meta: "same surface",
         description:
-          "A homepage vende o produto usando a mesma linguagem do app. Isso permite expandir pricing, docs e politicas sem cair numa camada de marketing desconectada do que o usuario realmente vai usar.",
-        focusNodeId: "landing-home-access",
+          "A homepage vende o produto usando a mesma linguagem do app. Isso permite expandir pricing, docs e legal sem cair numa camada de marketing desconectada do que o usuario realmente vai usar.",
+        focusNodeId: LANDING_HOME_ACCESS_NODE_ID,
+        focusWorkflowId: DEFAULT_LANDING_WORKFLOW_ID,
         pages: [
           {
             title: "Landing Page",
@@ -770,15 +769,14 @@ export function createMockWorkflows(): Workflow[] {
             title: "Docs",
             slug: "/docs",
             status: "next",
-            summary:
-              "Playbooks e templates de workflows para SaaS pequeno.",
+            summary: "Playbooks e templates de workflows para SaaS pequeno.",
           },
           {
-            title: "Policies",
-            slug: "/policies",
-            status: "later",
+            title: "Termos de Uso",
+            slug: "/legal",
+            status: "live",
             summary:
-              "Termos, privacidade e operacao legal na mesma shell.",
+              "Termos, responsabilidade operacional e privacidade na mesma shell.",
           },
         ],
       },
@@ -1224,6 +1222,221 @@ export function createMockWorkflows(): Workflow[] {
     "landing-audience",
   );
 
+  const wfLandingLegalNodes = [
+    makeLandingNode(
+      "landing-legal-hero",
+      "landingHeroNode",
+      { x: 320, y: 180 },
+      { width: 880, height: 420 },
+      {
+        label: "Base legal do produto",
+        eyebrow: "Termos de Uso",
+        headline: "Termos, responsabilidade e privacidade no mesmo canvas.",
+        body: "Ao entrar com Google, o uso do Flow Merge passa a seguir esta pagina para web e desktop. O produto continua local-first: workspace, workflows, nodes e runtime ficam na sua maquina; o backend guarda apenas identidade, sessao, licenca e metadata minima de billing.",
+        chips: [
+          "google login = aceite",
+          "workspace local",
+          "pix brasil-first",
+          "billing minimo",
+        ],
+        metrics: [
+          {
+            value: "14 dias",
+            label: "trial completo",
+            detail:
+              "Automacao, analytics, A/B e funil antes da primeira cobranca.",
+          },
+          {
+            value: "7 + 7",
+            label: "prazo + bloqueio",
+            detail:
+              "Fecha o prazo, abre 7 dias para pagar e depois mais 7 bloqueado antes da delecao total.",
+          },
+          {
+            value: "minimo",
+            label: "dados no backend",
+            detail:
+              "Id, nome, email, imagem, estado comercial e metadata de cobranca.",
+          },
+        ],
+      },
+    ),
+    makeLandingNode(
+      "landing-legal-acceptance",
+      "landingSectionNode",
+      { x: 980, y: 2060 },
+      { width: 520, height: 500 },
+      {
+        label: "Aceite e escopo de acesso",
+        eyebrow: "Terms of use",
+        description:
+          "Esta pagina concentra os termos essenciais do v1. O aceite acontece no momento em que a conta Google e usada para criar ou iniciar sessao no Flow Merge.",
+        items: [
+          {
+            title: "Aceite no login Google",
+            body: "Criar a conta ou entrar com Google significa aceitar estes termos para usar a versao web e a versao desktop.",
+          },
+          {
+            title: "Escopo do produto",
+            body: "O acesso libera a superficie single-user do Flow Merge. Recursos futuros de time, cloud ou comercial podem ter regras separadas.",
+          },
+          {
+            title: "Uso permitido",
+            body: "Voce so deve usar a plataforma em fluxos licitos, com base valida para tratar dados e sem violar sistemas, contratos ou direitos de terceiros.",
+          },
+        ],
+      },
+    ),
+    makeLandingNode(
+      "landing-legal-privacy",
+      "landingSectionNode",
+      { x: 320, y: 2020 },
+      { width: 520, height: 500 },
+      {
+        label: "Privacidade e dados",
+        eyebrow: "Privacy",
+        description:
+          "O desenho do produto e local-first por padrao. O backend comercial existe para identidade, sessao, licenca e cobranca, nao para guardar o workspace do usuario.",
+        items: [
+          {
+            title: "Workspace fica local",
+            body: "Workflows, nodes, runtime stores, logs locais e artefatos continuam no browser ou no app desktop desta maquina.",
+          },
+          {
+            title: "Dados minimos no backend",
+            body: "Guardamos somente id, nome, email, image URL, estado de acesso, plano, prazos comerciais e metadata minima das cobrancas PIX.",
+          },
+          {
+            title: "Chaves e integracoes",
+            body: "Voce responde pelas chaves, tokens, webhooks e credenciais de terceiros que inserir na plataforma ou em workflows executados por ela.",
+          },
+          {
+            title: "Delecao agressiva no fim do ciclo",
+            body: "Se a conta chegar ao estado deleted, os dados comerciais da conta sao removidos do backend e o cliente limpa o workspace local desta instalacao.",
+          },
+        ],
+      },
+    ),
+    makeLandingNode(
+      "landing-legal-responsibility",
+      "landingSectionNode",
+      { x: 1240, y: 1380 },
+      { width: 520, height: 540 },
+      {
+        label: "Responsabilidade operacional",
+        eyebrow: "Operator responsibility",
+        description:
+          "Flow Merge ajuda a automatizar e interpretar sinais, mas continua sendo uma ferramenta operada por voce. O usuario responde pelo que executa e pelo que decide automatizar.",
+        items: [
+          {
+            title: "Saidas de IA exigem revisao",
+            body: "Sugestoes, textos, hypotheses e acoes propostas pela IA podem errar. Voce deve revisar antes de agir sobre dados, clientes, receita ou incidentes.",
+          },
+          {
+            title: "Nao terceiriza decisao critica",
+            body: "Nao use o produto como substituto de analise juridica, fiscal, contabil, medica, securitaria ou qualquer outra revisao especializada exigida pelo seu contexto.",
+          },
+          {
+            title: "Sem abuso ou ataque",
+            body: "E proibido usar a plataforma para fraude, spam, scraping abusivo, invasao, exfiltracao de dados, teste ofensivo nao autorizado ou automacao ilicita.",
+          },
+          {
+            title: "Impacto de negocio continua seu",
+            body: "A plataforma mostra sinais e impacto estimado, mas a configuracao dos workflows e a decisao final sobre cupons, alerts, pricing e incidentes continuam sob sua responsabilidade.",
+          },
+        ],
+      },
+    ),
+    makeLandingNode(
+      "landing-legal-billing",
+      "landingSectionNode",
+      { x: 320, y: 1380 },
+      { width: 520, height: 540 },
+      {
+        label: "Billing, cancelamento e delecao",
+        eyebrow: "Commercial lifecycle",
+        description:
+          "O ciclo comercial do v1 e simples e explicito. O objetivo e evitar ambiguidades sobre trial, renovacao manual, bloqueio e limpeza final da conta.",
+        items: [
+          {
+            title: "Trial e planos",
+            body: "O trial dura 14 dias. O plano Pro Mensal custa R$89 por ciclo com PIX manual. O Founder Lifetime custa R$1.068 em pagamento unico por PIX.",
+          },
+          {
+            title: "Atraso de pagamento",
+            body: "Se um trial ou ciclo mensal vencer, a conta entra em payment_pending por 7 dias para regularizacao. Se nao houver pagamento, o acesso entra em blocked.",
+          },
+          {
+            title: "Cancelamento",
+            body: "Cancelar um plano ativo nao apaga a conta na hora. O cancelamento move a conta para payment_pending com 7 dias para acertar antes do bloqueio.",
+          },
+          {
+            title: "Bloqueio e delecao total",
+            body: "Depois do bloqueio, existem mais 7 dias antes da delecao total. No estado deleted, a conta comercial e apagada do backend e o cliente deve limpar o workspace local.",
+          },
+        ],
+      },
+    ),
+    makeLandingNode(
+      "landing-legal-access",
+      "landingAccessNode",
+      { x: 1340, y: 180 },
+      { width: 430, height: 620 },
+      {
+        label: "Entrar e aceitar",
+        eyebrow: "Access node",
+        meta: "google + terms + pix",
+        description:
+          "Entrar com Google inicia o trial e vincula o uso a esta base legal. A sessao vale para web e desktop; o workspace continua local-first.",
+      },
+    ),
+    makeLandingNode(
+      "landing-legal-footer",
+      "landingFooterNode",
+      { x: 320, y: 840 },
+      { width: 670, height: 540 },
+      {
+        label: "Legal e produto na mesma shell",
+        eyebrow: "Legal page",
+        meta: "public page",
+        description:
+          "A pagina legal nao vive fora do produto. Ela usa a mesma superficie, a mesma linguagem e o mesmo modelo de pagina do restante do site.",
+        focusNodeId: LANDING_LEGAL_ACCESS_NODE_ID,
+        focusWorkflowId: LEGAL_LANDING_WORKFLOW_ID,
+        pages: [
+          {
+            title: "Landing Page",
+            slug: "/",
+            status: "live",
+            summary:
+              "Posicionamento do produto, casos ancora e acesso ao trial no proprio canvas.",
+          },
+          {
+            title: "Termos de Uso",
+            slug: "/legal",
+            status: "live",
+            summary:
+              "Termos de uso, responsabilidade operacional e politica de privacidade em uma pagina unica.",
+          },
+          {
+            title: "Pricing",
+            slug: "/pricing",
+            status: "next",
+            summary:
+              "Detalhamento comercial dos planos, renovacao manual via PIX e upgrade para lifetime.",
+          },
+          {
+            title: "Docs",
+            slug: "/docs",
+            status: "next",
+            summary:
+              "Guias operacionais, playbooks e templates de workflows para pequenos SaaS.",
+          },
+        ],
+      },
+    ),
+  ];
+
   return [
     {
       id: "wf_cart",
@@ -1368,13 +1581,38 @@ export function createMockWorkflows(): Workflow[] {
       ],
     },
     {
+      id: LEGAL_LANDING_WORKFLOW_ID,
+      projectId: LANDING_PROJECT_ID,
+      name: "Termos de Uso",
+      accent: "#58a6ff",
+      active: true,
+      surface: "landing",
+      description:
+        "Pagina publica com termos de uso, responsabilidade operacional e politica de privacidade.",
+      tags: ["landing", "page", "legal", "terms", "privacy"],
+      createdAt: nowIso(-86400000),
+      updatedAt: nowIso(-1200000),
+      nodes: wfLandingLegalNodes,
+      edges: [
+        edge("landing-legal-hero", "landing-legal-acceptance"),
+        edge("landing-legal-hero", "landing-legal-privacy"),
+        edge("landing-legal-hero", "landing-legal-access"),
+        edge("landing-legal-acceptance", "landing-legal-responsibility"),
+        edge("landing-legal-privacy", "landing-legal-billing"),
+        edge("landing-legal-access", "landing-legal-billing"),
+        edge("landing-legal-responsibility", "landing-legal-footer"),
+        edge("landing-legal-billing", "landing-legal-footer"),
+      ],
+    },
+    {
       id: "wf_landing_compare",
       projectId: LANDING_PROJECT_ID,
       name: "Execute, analyze, act",
       accent: "#58a6ff",
       active: true,
       surface: "landing",
-      description: "Board comparativo para explicar a tese do produto sem slogan vazio.",
+      description:
+        "Board comparativo para explicar a tese do produto sem slogan vazio.",
       tags: ["landing", "positioning", "compare"],
       createdAt: nowIso(-86400000),
       updatedAt: nowIso(-2400000),

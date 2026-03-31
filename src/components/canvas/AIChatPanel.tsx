@@ -15,25 +15,21 @@ import type { AIResponse, NodeCommand } from "@/lib/deepseek";
 import { streamDeepSeek } from "@/lib/deepseek";
 import { GenerativeUIRenderer } from "@/components/canvas/GenerativeUIRenderer";
 import { ICONS } from "@/components/nodes/SharedNodeComponents";
+import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { useActiveWorkflow, useFlowStore } from "@/store/useFlowStore";
 import type { AppNode, GenerativeComponent } from "@/lib/flow-types";
 
 const EMPTY_NODES: AppNode[] = [];
 
-function getDisplayContent(content: string) {
-  try {
-    const parsed = JSON.parse(content);
-    return parsed.message ?? content;
-  } catch {
-    return content;
-  }
-}
-
 function normalizeNodeRef(value: string) {
   return value.trim().toLowerCase();
 }
 
-function buildNodeReferenceMap(existingNodes: AppNode[], createdNodes: AppNode[], response: AIResponse) {
+function buildNodeReferenceMap(
+  existingNodes: AppNode[],
+  createdNodes: AppNode[],
+  response: AIResponse,
+) {
   const references = new Map<string, string>();
 
   [...existingNodes, ...createdNodes].forEach((node) => {
@@ -53,14 +49,24 @@ function buildNodeReferenceMap(existingNodes: AppNode[], createdNodes: AppNode[]
   return references;
 }
 
-function resolveNodeReference(referenceMap: Map<string, string>, reference?: string) {
+function resolveNodeReference(
+  referenceMap: Map<string, string>,
+  reference?: string,
+) {
   if (!reference) return null;
-  return referenceMap.get(reference) ?? referenceMap.get(normalizeNodeRef(reference)) ?? null;
+  return (
+    referenceMap.get(reference) ??
+    referenceMap.get(normalizeNodeRef(reference)) ??
+    null
+  );
 }
 
 function extractEdgeCommands(commands?: NodeCommand[]) {
   return (commands ?? [])
-    .filter((command) => command.command === "create_edge" && command.source && command.target)
+    .filter(
+      (command) =>
+        command.command === "create_edge" && command.source && command.target,
+    )
     .map((command) => ({
       source: command.source!,
       target: command.target!,
@@ -80,8 +86,12 @@ export function AIChatPanel() {
   const deleteChat = useFlowStore((state) => state.deleteChat);
   const addUserMessage = useFlowStore((state) => state.addUserMessage);
   const appendStreamChunk = useFlowStore((state) => state.appendStreamChunk);
-  const resolveAssistantMessage = useFlowStore((state) => state.resolveAssistantMessage);
-  const failAssistantMessage = useFlowStore((state) => state.failAssistantMessage);
+  const resolveAssistantMessage = useFlowStore(
+    (state) => state.resolveAssistantMessage,
+  );
+  const failAssistantMessage = useFlowStore(
+    (state) => state.failAssistantMessage,
+  );
   const deepseekKey = useFlowStore((state) => state.deepseekKey);
   const contextNodeIds = useFlowStore((state) => state.contextNodeIds);
   const clearContextNodes = useFlowStore((state) => state.clearContextNodes);
@@ -93,9 +103,12 @@ export function AIChatPanel() {
   const nodes = activeWorkflow?.nodes ?? EMPTY_NODES;
   const [input, setInput] = useState("");
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const activeThread = useMemo(
-    () => chatThreads.find((thread) => thread.id === activeChatId) ?? chatThreads[0],
+    () =>
+      chatThreads.find((thread) => thread.id === activeChatId) ??
+      chatThreads[0],
     [activeChatId, chatThreads],
   );
 
@@ -120,7 +133,10 @@ export function AIChatPanel() {
     if (!chatExpanded) return;
 
     const onMouseDown = (event: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(event.target as Node)) {
+      if (
+        panelRef.current &&
+        !panelRef.current.contains(event.target as Node)
+      ) {
         setChatExpanded(false);
       }
     };
@@ -128,6 +144,14 @@ export function AIChatPanel() {
     document.addEventListener("mousedown", onMouseDown);
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, [chatExpanded, setChatExpanded]);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "0px";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+  }, [input]);
 
   const handleSend = async () => {
     const value = input.trim();
@@ -150,7 +174,11 @@ export function AIChatPanel() {
       activeWorkflow,
       (chunk) => appendStreamChunk(threadId, chunk),
       (parsed) => {
-        resolveAssistantMessage(threadId, parsed.message, (parsed.ui as GenerativeComponent[]) ?? []);
+        resolveAssistantMessage(
+          threadId,
+          parsed.message,
+          (parsed.ui as GenerativeComponent[]) ?? [],
+        );
 
         let createdNodes: AppNode[] = [];
         if (parsed.nodes?.length) {
@@ -158,17 +186,30 @@ export function AIChatPanel() {
         }
 
         const referenceMap = buildNodeReferenceMap(nodes, createdNodes, parsed);
-        const explicitEdges = [...(parsed.edges ?? []), ...extractEdgeCommands(parsed.commands)];
+        const explicitEdges = [
+          ...(parsed.edges ?? []),
+          ...extractEdgeCommands(parsed.commands),
+        ];
 
         parsed.commands?.forEach((command) => {
-          if (command.command === "update_node" && command.nodeId && command.data) {
-            const resolvedNodeId = resolveNodeReference(referenceMap, command.nodeId);
+          if (
+            command.command === "update_node" &&
+            command.nodeId &&
+            command.data
+          ) {
+            const resolvedNodeId = resolveNodeReference(
+              referenceMap,
+              command.nodeId,
+            );
             if (resolvedNodeId) {
               updateNodeData(resolvedNodeId, command.data);
             }
           }
           if (command.command === "delete_node" && command.nodeId) {
-            const resolvedNodeId = resolveNodeReference(referenceMap, command.nodeId);
+            const resolvedNodeId = resolveNodeReference(
+              referenceMap,
+              command.nodeId,
+            );
             if (resolvedNodeId) {
               deleteNode(resolvedNodeId);
             }
@@ -222,7 +263,10 @@ export function AIChatPanel() {
             exit={{ height: 0, opacity: 0, y: 8 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
             className="fc-panel mb-1 flex flex-col overflow-hidden"
-            style={{ background: "rgba(13,17,23,0.96)", backdropFilter: "blur(16px)" }}
+            style={{
+              background: "rgba(13,17,23,0.96)",
+              backdropFilter: "blur(16px)",
+            }}
           >
             <div className="border-b border-[#30363d] px-2 py-2">
               <div className="flex items-center gap-2 overflow-x-auto">
@@ -305,27 +349,34 @@ export function AIChatPanel() {
                           borderColor: "#1f6feb33",
                         }}
                       >
-                        <span className="whitespace-pre-wrap text-[#e6edf3]">
-                          {getDisplayContent(message.content)}
-                        </span>
+                        <MarkdownContent
+                          content={message.content}
+                          className="text-[#e6edf3] [&_p]:leading-6 [&_ul]:text-[#e6edf3] [&_ol]:text-[#e6edf3]"
+                        />
                       </div>
                     ) : (
                       <div className="max-w-[84%] px-1 py-1 text-xs leading-relaxed text-[#c9d1d9]">
+                        {message.content ? (
+                          <MarkdownContent
+                            content={message.content}
+                            className="text-[#c9d1d9] [&_p]:leading-6 [&_ul]:text-[#c9d1d9] [&_ol]:text-[#c9d1d9]"
+                          />
+                        ) : null}
                         {message.streaming ? (
-                          <span className="flex items-center gap-2 text-[#7d8590]">
+                          <span className="mt-2 inline-flex items-center gap-2 text-[#7d8590]">
                             <Loader2 className="h-3.5 w-3.5 animate-spin text-[#1f6feb]" />
-                            Generating...
-                          </span>
-                        ) : (
-                          <>
-                            <span className="whitespace-pre-wrap">
-                              {getDisplayContent(message.content)}
+                            <span>
+                              {message.content
+                                ? "Continuando..."
+                                : "Gerando resposta..."}
                             </span>
-                            {message.generativeUI?.length ? (
-                              <GenerativeUIRenderer components={message.generativeUI} />
-                            ) : null}
-                          </>
-                        )}
+                          </span>
+                        ) : null}
+                        {message.generativeUI?.length ? (
+                          <GenerativeUIRenderer
+                            components={message.generativeUI}
+                          />
+                        ) : null}
                       </div>
                     )}
                   </div>
@@ -338,7 +389,10 @@ export function AIChatPanel() {
 
       <div
         className="fc-panel overflow-hidden"
-        style={{ background: "rgba(22,27,34,0.97)", backdropFilter: "blur(16px)" }}
+        style={{
+          background: "rgba(22,27,34,0.97)",
+          backdropFilter: "blur(16px)",
+        }}
       >
         {contextNodes.length ? (
           <div className="flex flex-wrap items-center gap-1 px-3 pt-2">
@@ -349,10 +403,16 @@ export function AIChatPanel() {
               <span
                 key={node.id}
                 className="inline-flex items-center gap-2 rounded-full border px-2 py-1 text-[10px]"
-                style={{ background: "#1f6feb14", borderColor: "#1f6feb30", color: "#58a6ff" }}
+                style={{
+                  background: "#1f6feb14",
+                  borderColor: "#1f6feb30",
+                  color: "#58a6ff",
+                }}
               >
                 {(() => {
-                  const Icon = node.icon ? ICONS[node.icon as string] : undefined;
+                  const Icon = node.icon
+                    ? ICONS[node.icon as string]
+                    : undefined;
                   return Icon ? <Icon className="h-3 w-3" /> : null;
                 })()}
                 {node.label}
@@ -383,7 +443,8 @@ export function AIChatPanel() {
             <Bot className="h-3.5 w-3.5 text-[#3d444d]" />
           </div>
 
-          <input
+          <textarea
+            ref={textareaRef}
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={(event) => {
@@ -395,10 +456,11 @@ export function AIChatPanel() {
             onFocus={() => setChatExpanded(true)}
             placeholder={
               contextNodes.length
-                ? `Pergunte sobre ${contextNodes.length} node${contextNodes.length > 1 ? "s" : ""} em contexto...`
-                : "Peca para a IA montar um workflow, analisar dados ou editar o canvas..."
+                ? `Use markdown e pergunte sobre ${contextNodes.length} node${contextNodes.length > 1 ? "s" : ""} em contexto...`
+                : "Escreva em markdown para a IA montar workflow, analisar dados ou editar o canvas..."
             }
-            className="flex-1 border-none bg-transparent text-xs text-[#e6edf3] outline-none placeholder:text-[#3d444d]"
+            rows={1}
+            className="max-h-40 min-h-[22px] flex-1 resize-none border-none bg-transparent py-0.5 text-xs leading-6 text-[#e6edf3] outline-none placeholder:text-[#3d444d]"
           />
 
           <span className="rounded border border-[#30363d] px-2 py-1 text-[10px] text-[#7d8590]">

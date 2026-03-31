@@ -92,7 +92,9 @@ const LAYOUT_COLLISION_Y_GAP = 170;
 const SYSTEM_PROMPT = `You are Flow Merge AI, an embedded workflow automation and analytics assistant.
 
 You operate a canvas-based app for indie hackers and SaaS founders.
-Respond ONLY with valid JSON. No markdown. No code fences.
+Respond ONLY with valid JSON. No code fences and no prose outside JSON.
+The "message" field may contain markdown for rich chat rendering.
+User messages may contain markdown. Read headings, bullets, emphasis, tables, and fenced code as structured intent.
 
 Allowed nodeType values:
 ${allowedAiNodeTypes.join(", ")}
@@ -174,7 +176,8 @@ If the user asks to edit existing nodes, prefer action="modify".`;
 const CRITIC_PROMPT = `You are Flow Merge AI Critic.
 
 You review a proposed Flow Merge workflow JSON and return a corrected final JSON in the same response format.
-Respond ONLY with valid JSON. No markdown. No code fences.
+Respond ONLY with valid JSON. No code fences and no prose outside JSON.
+The "message" field may contain markdown for rich chat rendering.
 
 Your job:
 - Fix topology mistakes.
@@ -247,7 +250,9 @@ function sanitizeText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function sanitizeParameterValue(value: unknown): string | number | boolean | null {
+function sanitizeParameterValue(
+  value: unknown,
+): string | number | boolean | null {
   if (typeof value === "string") return value.trim();
   if (typeof value === "number" || typeof value === "boolean") return value;
   if (Array.isArray(value)) {
@@ -272,7 +277,11 @@ function sanitizeParameterValue(value: unknown): string | number | boolean | nul
 function isPrimitiveParameterValue(
   value: string | number | boolean | null,
 ): value is string | number | boolean {
-  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+  return (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  );
 }
 
 function sanitizeParameters(
@@ -280,23 +289,22 @@ function sanitizeParameters(
 ): Record<string, string | number | boolean> | undefined {
   if (!isRecord(value)) return undefined;
 
-  const parameters = Object.entries(value).reduce<Record<string, string | number | boolean>>(
-    (accumulator, [rawKey, rawValue]) => {
-      const key = rawKey.trim();
-      const entry = sanitizeParameterValue(rawValue);
-      if (
-        key === "" ||
-        !isPrimitiveParameterValue(entry) ||
-        (typeof entry === "string" && entry.trim() === "")
-      ) {
-        return accumulator;
-      }
-
-      accumulator[key] = entry;
+  const parameters = Object.entries(value).reduce<
+    Record<string, string | number | boolean>
+  >((accumulator, [rawKey, rawValue]) => {
+    const key = rawKey.trim();
+    const entry = sanitizeParameterValue(rawValue);
+    if (
+      key === "" ||
+      !isPrimitiveParameterValue(entry) ||
+      (typeof entry === "string" && entry.trim() === "")
+    ) {
       return accumulator;
-    },
-    {},
-  );
+    }
+
+    accumulator[key] = entry;
+    return accumulator;
+  }, {});
 
   return Object.keys(parameters).length ? parameters : undefined;
 }
@@ -304,7 +312,9 @@ function sanitizeParameters(
 function sanitizeConfig(value: unknown): Record<string, unknown> | undefined {
   if (!isRecord(value)) return undefined;
   const sanitized = sanitizeJsonValue(value);
-  return isRecord(sanitized) && Object.keys(sanitized).length ? sanitized : undefined;
+  return isRecord(sanitized) && Object.keys(sanitized).length
+    ? sanitized
+    : undefined;
 }
 
 function sanitizePosition(
@@ -317,21 +327,40 @@ function sanitizePosition(
   };
 
   if (!isRecord(value)) return fallback;
-  const x = typeof value.x === "number" && Number.isFinite(value.x) ? value.x : fallback.x;
-  const y = typeof value.y === "number" && Number.isFinite(value.y) ? value.y : fallback.y;
+  const x =
+    typeof value.x === "number" && Number.isFinite(value.x)
+      ? value.x
+      : fallback.x;
+  const y =
+    typeof value.y === "number" && Number.isFinite(value.y)
+      ? value.y
+      : fallback.y;
   return { x, y };
 }
 
 function isNodeTypeId(value: unknown): value is NodeTypeId {
-  return typeof value === "string" && allowedAiNodeTypes.includes(value as NodeTypeId);
+  return (
+    typeof value === "string" &&
+    allowedAiNodeTypes.includes(value as NodeTypeId)
+  );
 }
 
-function isChartType(value: unknown): value is NonNullable<AiNodeSpec["chartType"]> {
-  return typeof value === "string" && VALID_CHART_TYPES.has(value as NonNullable<AiNodeSpec["chartType"]>);
+function isChartType(
+  value: unknown,
+): value is NonNullable<AiNodeSpec["chartType"]> {
+  return (
+    typeof value === "string" &&
+    VALID_CHART_TYPES.has(value as NonNullable<AiNodeSpec["chartType"]>)
+  );
 }
 
-function isVizVariant(value: unknown): value is NonNullable<AiNodeSpec["vizVariant"]> {
-  return typeof value === "string" && VALID_VIZ_VARIANTS.has(value as NonNullable<AiNodeSpec["vizVariant"]>);
+function isVizVariant(
+  value: unknown,
+): value is NonNullable<AiNodeSpec["vizVariant"]> {
+  return (
+    typeof value === "string" &&
+    VALID_VIZ_VARIANTS.has(value as NonNullable<AiNodeSpec["vizVariant"]>)
+  );
 }
 
 function sanitizeProgrammable(
@@ -339,12 +368,18 @@ function sanitizeProgrammable(
 ): AiNodeSpec["programmable"] | undefined {
   if (!isRecord(value)) return undefined;
 
-  const mode = value.mode === "code" ? "code" : value.mode === "builtin" ? "builtin" : undefined;
+  const mode =
+    value.mode === "code"
+      ? "code"
+      : value.mode === "builtin"
+        ? "builtin"
+        : undefined;
   const code = typeof value.code === "string" ? value.code : undefined;
   const outputTemplate =
     typeof value.outputTemplate === "string" ? value.outputTemplate : undefined;
 
-  if (!mode && code === undefined && outputTemplate === undefined) return undefined;
+  if (!mode && code === undefined && outputTemplate === undefined)
+    return undefined;
 
   return {
     ...(mode ? { mode } : {}),
@@ -359,7 +394,9 @@ function buildUniqueAlias(
   label: string,
   usedAliases: Set<string>,
 ) {
-  let base = slugifyReference(requestedAlias || label || nodeCatalogMap[nodeType].label || nodeType);
+  let base = slugifyReference(
+    requestedAlias || label || nodeCatalogMap[nodeType].label || nodeType,
+  );
   if (!/^[a-z_]/.test(base)) {
     base = `node_${base}`;
   }
@@ -386,14 +423,23 @@ function sanitizeNodes(value: unknown): AiNodeSpec[] {
     const nodeType = entry.nodeType;
     const meta = nodeCatalogMap[nodeType];
     const label = sanitizeText(entry.label) || meta.label;
-    const alias = buildUniqueAlias(sanitizeText(entry.alias), nodeType, label, usedAliases);
+    const alias = buildUniqueAlias(
+      sanitizeText(entry.alias),
+      nodeType,
+      label,
+      usedAliases,
+    );
     const description = sanitizeText(entry.description);
     const notes = sanitizeText(entry.notes);
     const parameters = sanitizeParameters(entry.parameters);
     const config = sanitizeConfig(entry.config);
     const programmable = sanitizeProgrammable(entry.programmable);
-    const chartType = isChartType(entry.chartType) ? entry.chartType : meta.chartType;
-    const vizVariant = isVizVariant(entry.vizVariant) ? entry.vizVariant : meta.vizVariant;
+    const chartType = isChartType(entry.chartType)
+      ? entry.chartType
+      : meta.chartType;
+    const vizVariant = isVizVariant(entry.vizVariant)
+      ? entry.vizVariant
+      : meta.vizVariant;
 
     nodes.push({
       alias,
@@ -472,7 +518,10 @@ function inferLayoutDepths(nodes: AiNodeSpec[], edges: AiWorkflowEdge[]) {
 
     (adjacency.get(currentAlias) ?? []).forEach((targetAlias) => {
       const nextDepth = (depths.get(currentAlias) ?? 0) + 1;
-      depths.set(targetAlias, Math.max(depths.get(targetAlias) ?? 0, nextDepth));
+      depths.set(
+        targetAlias,
+        Math.max(depths.get(targetAlias) ?? 0, nextDepth),
+      );
       indegree.set(targetAlias, (indegree.get(targetAlias) ?? 1) - 1);
 
       if ((indegree.get(targetAlias) ?? 0) <= 0) {
@@ -514,7 +563,10 @@ function applySmartLayout(
     grouped.set(depth, currentColumn);
   });
 
-  const maxRows = Math.max(...[...grouped.values()].map((column) => column.length), 1);
+  const maxRows = Math.max(
+    ...[...grouped.values()].map((column) => column.length),
+    1,
+  );
   const existingPositions =
     workflowContext?.nodes.map((node) => ({
       x: typeof node.position.x === "number" ? node.position.x : LAYOUT_BASE_X,
@@ -525,7 +577,9 @@ function applySmartLayout(
     LAYOUT_BASE_X - LAYOUT_COLUMN_GAP,
   );
   const shouldAppendToRight = Boolean(workflowContext?.nodes.length);
-  const baseX = shouldAppendToRight ? existingMaxX + LAYOUT_COLUMN_GAP : LAYOUT_BASE_X;
+  const baseX = shouldAppendToRight
+    ? existingMaxX + LAYOUT_COLUMN_GAP
+    : LAYOUT_BASE_X;
   const occupied = [...existingPositions];
   const laidOutByAlias = new Map<string, AiNodeSpec>();
 
@@ -539,7 +593,11 @@ function applySmartLayout(
         return (left.position?.x ?? 0) - (right.position?.x ?? 0);
       });
       const columnStartY =
-        LAYOUT_BASE_Y + Math.max(0, (maxRows - orderedColumnNodes.length) * (LAYOUT_ROW_GAP / 2));
+        LAYOUT_BASE_Y +
+        Math.max(
+          0,
+          (maxRows - orderedColumnNodes.length) * (LAYOUT_ROW_GAP / 2),
+        );
 
       orderedColumnNodes.forEach((node, index) => {
         let x = baseX + depth * LAYOUT_COLUMN_GAP;
@@ -612,7 +670,10 @@ function hasKnownReference(references: Set<string>, value: string) {
   return references.has(normalizeNodeReference(value));
 }
 
-function sanitizeEdges(value: unknown, references: Set<string>): AiWorkflowEdge[] {
+function sanitizeEdges(
+  value: unknown,
+  references: Set<string>,
+): AiWorkflowEdge[] {
   if (!Array.isArray(value)) return [];
 
   const seen = new Set<string>();
@@ -622,10 +683,18 @@ function sanitizeEdges(value: unknown, references: Set<string>): AiWorkflowEdge[
     if (!isRecord(entry)) return;
     const source = sanitizeText(entry.source);
     const target = sanitizeText(entry.target);
-    if (!source || !target || normalizeNodeReference(source) === normalizeNodeReference(target)) {
+    if (
+      !source ||
+      !target ||
+      normalizeNodeReference(source) === normalizeNodeReference(target)
+    ) {
       return;
     }
-    if (!hasKnownReference(references, source) || !hasKnownReference(references, target)) return;
+    if (
+      !hasKnownReference(references, source) ||
+      !hasKnownReference(references, target)
+    )
+      return;
 
     const sourceHandle = sanitizeText(entry.sourceHandle);
     const targetHandle = sanitizeText(entry.targetHandle);
@@ -656,7 +725,10 @@ function sanitizeCommands(
   if (!Array.isArray(value)) return undefined;
 
   const commands = value.reduce<NodeCommand[]>((accumulator, entry) => {
-    if (!isRecord(entry) || !VALID_COMMANDS.has(entry.command as NodeCommand["command"])) {
+    if (
+      !isRecord(entry) ||
+      !VALID_COMMANDS.has(entry.command as NodeCommand["command"])
+    ) {
       return accumulator;
     }
 
@@ -701,11 +773,18 @@ function sanitizeCommands(
   return commands.length ? commands : undefined;
 }
 
-function sanitizeGenerativeUi(value: unknown): GenerativeComponent[] | undefined {
+function sanitizeGenerativeUi(
+  value: unknown,
+): GenerativeComponent[] | undefined {
   if (!Array.isArray(value)) return undefined;
 
   const ui = value.flatMap((entry) => {
-    if (!isRecord(entry) || !VALID_UI_COMPONENTS.has(entry.component as GenerativeComponent["component"])) {
+    if (
+      !isRecord(entry) ||
+      !VALID_UI_COMPONENTS.has(
+        entry.component as GenerativeComponent["component"],
+      )
+    ) {
       return [];
     }
     const props = sanitizeConfig(entry.props);
@@ -728,7 +807,9 @@ function getParameterValue(
   const normalizedLookup = new Map(
     Object.entries(parameters).map(([key, value]) => [
       normalizeNodeReference(key),
-      typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
         ? String(value)
         : "",
     ]),
@@ -742,11 +823,7 @@ function getParameterValue(
   return "";
 }
 
-function setParameterValue(
-  node: AiNodeSpec,
-  key: string,
-  value: string,
-) {
+function setParameterValue(node: AiNodeSpec, key: string, value: string) {
   if (!value.trim()) return;
   node.parameters = {
     ...(node.parameters ?? {}),
@@ -769,10 +846,7 @@ function buildNodeSpecReferenceMap(nodes: AiNodeSpec[]) {
   return references;
 }
 
-function buildIncomingNodes(
-  nodes: AiNodeSpec[],
-  edges: AiWorkflowEdge[],
-) {
+function buildIncomingNodes(nodes: AiNodeSpec[], edges: AiWorkflowEdge[]) {
   const referenceMap = buildNodeSpecReferenceMap(nodes);
   const incoming = new Map<string, AiNodeSpec[]>();
 
@@ -796,7 +870,9 @@ function stripStorePrefix(label: string) {
 }
 
 function deriveAiStoreName(node: AiNodeSpec, upstreamNodes: AiNodeSpec[]) {
-  const directTrigger = upstreamNodes.find((upstreamNode) => upstreamNode.nodeType.startsWith("trigger_"));
+  const directTrigger = upstreamNodes.find((upstreamNode) =>
+    upstreamNode.nodeType.startsWith("trigger_"),
+  );
   const triggerTag = directTrigger
     ? getParameterValue(directTrigger.parameters, "Tag Value", "variant tag")
     : "";
@@ -825,7 +901,11 @@ function repairNodeSemantics(response: AIResponse) {
     if (node.nodeType === "action_switch") {
       const tagValues = upstreamNodes
         .map((upstreamNode) =>
-          getParameterValue(upstreamNode.parameters, "Tag Value", "variant tag"),
+          getParameterValue(
+            upstreamNode.parameters,
+            "Tag Value",
+            "variant tag",
+          ),
         )
         .filter(Boolean);
 
@@ -840,16 +920,28 @@ function repairNodeSemantics(response: AIResponse) {
     if (node.nodeType === "analytics_ab") {
       const storeNames = upstreamNodes
         .filter((upstreamNode) => upstreamNode.nodeType === "analytics_store")
-        .map((upstreamNode) => getParameterValue(upstreamNode.parameters, "Store Name"))
+        .map((upstreamNode) =>
+          getParameterValue(upstreamNode.parameters, "Store Name"),
+        )
         .filter(Boolean);
 
-      if (storeNames.length && !getParameterValue(node.parameters, "Store Names")) {
+      if (
+        storeNames.length &&
+        !getParameterValue(node.parameters, "Store Names")
+      ) {
         setParameterValue(node, "Store Names", storeNames.join(","));
       }
     }
 
-    if (node.nodeType === "analytics_store" && !getParameterValue(node.parameters, "Store Name")) {
-      setParameterValue(node, "Store Name", deriveAiStoreName(node, upstreamNodes));
+    if (
+      node.nodeType === "analytics_store" &&
+      !getParameterValue(node.parameters, "Store Name")
+    ) {
+      setParameterValue(
+        node,
+        "Store Name",
+        deriveAiStoreName(node, upstreamNodes),
+      );
     }
 
     if (node.nodeType === "analytics_compare") {
@@ -862,10 +954,16 @@ function repairNodeSemantics(response: AIResponse) {
         })
         .filter(Boolean);
 
-      if (sourceLabels[0] && !getParameterValue(node.parameters, "Input A Label")) {
+      if (
+        sourceLabels[0] &&
+        !getParameterValue(node.parameters, "Input A Label")
+      ) {
         setParameterValue(node, "Input A Label", sourceLabels[0]);
       }
-      if (sourceLabels[1] && !getParameterValue(node.parameters, "Input B Label")) {
+      if (
+        sourceLabels[1] &&
+        !getParameterValue(node.parameters, "Input B Label")
+      ) {
         setParameterValue(node, "Input B Label", sourceLabels[1]);
       }
     }
@@ -879,9 +977,15 @@ function sanitizeAiResponse(
   workflowContext: Workflow | null | undefined,
   contextNodes: DeepSeekContextNode[],
 ) {
-  const action = VALID_AI_ACTIONS.has(response.action) ? response.action : "chat";
+  const action = VALID_AI_ACTIONS.has(response.action)
+    ? response.action
+    : "chat";
   const nodes = sanitizeNodes(response.nodes);
-  const references = buildKnownReferenceSet(workflowContext, contextNodes, nodes);
+  const references = buildKnownReferenceSet(
+    workflowContext,
+    contextNodes,
+    nodes,
+  );
   const edges = sanitizeEdges(response.edges, references);
   const commands = sanitizeCommands(response.commands, references);
   const ui = sanitizeGenerativeUi(response.ui);
@@ -913,7 +1017,8 @@ function uniq(values: string[]) {
 function getEffectiveEdges(response: AIResponse) {
   const edges = [...(response.edges ?? [])];
   response.commands?.forEach((command) => {
-    if (command.command !== "create_edge" || !command.source || !command.target) return;
+    if (command.command !== "create_edge" || !command.source || !command.target)
+      return;
     edges.push({
       source: command.source,
       target: command.target,
@@ -956,7 +1061,10 @@ function buildValidationNodeMap(
   responseNodes: AiNodeSpec[] | undefined,
 ) {
   const lookup = new Map<string, ValidationNode>();
-  const addNode = (reference: string | undefined, node: Omit<ValidationNode, "ref">) => {
+  const addNode = (
+    reference: string | undefined,
+    node: Omit<ValidationNode, "ref">,
+  ) => {
     if (!reference) return;
     lookup.set(normalizeNodeReference(reference), {
       ref: reference,
@@ -1010,7 +1118,13 @@ function buildIncomingValidationNodes(
 
     const targetKey = normalizeNodeReference(edge.target);
     const current = incoming.get(targetKey) ?? [];
-    if (!current.some((node) => normalizeNodeReference(node.ref) === normalizeNodeReference(sourceNode.ref))) {
+    if (
+      !current.some(
+        (node) =>
+          normalizeNodeReference(node.ref) ===
+          normalizeNodeReference(sourceNode.ref),
+      )
+    ) {
       current.push(sourceNode);
       incoming.set(targetKey, current);
     }
@@ -1028,21 +1142,32 @@ function buildValidationIssues(
   const issues: ValidationIssue[] = [];
   const nodes = response.nodes ?? [];
   const edges = getEffectiveEdges(response);
-  const nodeLookup = buildValidationNodeMap(workflowContext, contextNodes, nodes);
+  const nodeLookup = buildValidationNodeMap(
+    workflowContext,
+    contextNodes,
+    nodes,
+  );
   const incoming = buildIncomingValidationNodes(nodeLookup, edges);
   const logsIntent = isLogIntent(userMessage);
   const experimentIntent = isExperimentIntent(userMessage);
 
-  if ((response.action === "create_nodes" || response.action === "modify") && nodes.length > 1 && edges.length === 0) {
+  if (
+    (response.action === "create_nodes" || response.action === "modify") &&
+    nodes.length > 1 &&
+    edges.length === 0
+  ) {
     issues.push({
       severity: "error",
       code: "missing_edges",
-      message: "The plan creates multiple nodes without connecting them with edges.",
+      message:
+        "The plan creates multiple nodes without connecting them with edges.",
     });
   }
 
   nodes.forEach((node) => {
-    const nodeKey = normalizeNodeReference(node.alias ?? node.label ?? node.nodeType);
+    const nodeKey = normalizeNodeReference(
+      node.alias ?? node.label ?? node.nodeType,
+    );
     const upstreamNodes = incoming.get(nodeKey) ?? [];
 
     if (node.nodeType.startsWith("trigger_") && upstreamNodes.length > 0) {
@@ -1053,7 +1178,10 @@ function buildValidationIssues(
       });
     }
 
-    if (node.nodeType === "analytics_store" && !getParameterValue(node.parameters, "Store Name")) {
+    if (
+      node.nodeType === "analytics_store" &&
+      !getParameterValue(node.parameters, "Store Name")
+    ) {
       issues.push({
         severity: "error",
         code: "store_without_name",
@@ -1078,7 +1206,9 @@ function buildValidationIssues(
     if (node.nodeType === "action_switch") {
       const upstreamTags = uniq(
         upstreamNodes
-          .map((upstreamNode) => getParameterValue(upstreamNode.parameters, "Tag Value"))
+          .map((upstreamNode) =>
+            getParameterValue(upstreamNode.parameters, "Tag Value"),
+          )
           .filter(Boolean),
       );
       const caseValues = uniq(
@@ -1087,7 +1217,10 @@ function buildValidationIssues(
           .filter(Boolean),
       );
 
-      if (upstreamTags.length && !upstreamTags.every((tag) => caseValues.includes(tag))) {
+      if (
+        upstreamTags.length &&
+        !upstreamTags.every((tag) => caseValues.includes(tag))
+      ) {
         issues.push({
           severity: "error",
           code: "switch_missing_cases",
@@ -1097,10 +1230,14 @@ function buildValidationIssues(
     }
 
     if (node.nodeType === "analytics_ab") {
-      const parameterStores = splitCsvValues(getParameterValue(node.parameters, "Store Names"));
+      const parameterStores = splitCsvValues(
+        getParameterValue(node.parameters, "Store Names"),
+      );
       const upstreamStores = upstreamNodes
         .filter((upstreamNode) => upstreamNode.nodeType === "analytics_store")
-        .map((upstreamNode) => getParameterValue(upstreamNode.parameters, "Store Name"))
+        .map((upstreamNode) =>
+          getParameterValue(upstreamNode.parameters, "Store Name"),
+        )
         .filter(Boolean);
       const activeStores = uniq([...parameterStores, ...upstreamStores]);
 
@@ -1172,7 +1309,8 @@ function buildValidationIssues(
     issues.push({
       severity: "error",
       code: "logs_using_ab",
-      message: "Log/observability workflows should not use analytics_ab or experiment semantics.",
+      message:
+        "Log/observability workflows should not use analytics_ab or experiment semantics.",
     });
   }
 
@@ -1185,7 +1323,8 @@ function buildValidationIssues(
     issues.push({
       severity: "warning",
       code: "logs_with_experiment_labels",
-      message: "Log/observability workflows still contain experiment-oriented labels like winner, variant, or conversion.",
+      message:
+        "Log/observability workflows still contain experiment-oriented labels like winner, variant, or conversion.",
     });
   }
 
@@ -1197,7 +1336,8 @@ function buildValidationIssues(
     issues.push({
       severity: "warning",
       code: "experiment_without_ab_analyzer",
-      message: "Experiment workflow uses generic comparison without analytics_ab winner semantics.",
+      message:
+        "Experiment workflow uses generic comparison without analytics_ab winner semantics.",
     });
   }
 
@@ -1207,7 +1347,10 @@ function buildValidationIssues(
 function formatValidationIssues(issues: ValidationIssue[]) {
   if (!issues.length) return "[Validation findings]\n- none";
   return `[Validation findings]\n${issues
-    .map((issue, index) => `${index + 1}. [${issue.severity}] ${issue.code}: ${issue.message}`)
+    .map(
+      (issue, index) =>
+        `${index + 1}. [${issue.severity}] ${issue.code}: ${issue.message}`,
+    )
     .join("\n")}`;
 }
 
@@ -1248,6 +1391,7 @@ async function requestDeepSeekJson(
 
   const decoder = new TextDecoder();
   let fullText = "";
+  let streamedMessage = "";
 
   while (true) {
     const { value, done } = await reader.read();
@@ -1263,7 +1407,19 @@ async function requestDeepSeekJson(
         const delta = json.choices?.[0]?.delta?.content ?? "";
         if (delta) {
           fullText += delta;
-          onChunk(delta);
+          const partialMessage = extractJsonStringField(
+            fullText,
+            "message",
+            true,
+          );
+          if (
+            partialMessage &&
+            partialMessage.length > streamedMessage.length
+          ) {
+            const nextChunk = partialMessage.slice(streamedMessage.length);
+            streamedMessage = partialMessage;
+            onChunk(nextChunk);
+          }
         }
       } catch {
         continue;
@@ -1295,7 +1451,11 @@ async function runCriticPass(
         )
         .join("\n")}\n\n`
     : "";
-  const nodePlaybookPrefix = formatNodePlaybookForPrompt(userMessage, workflowContext, 18);
+  const nodePlaybookPrefix = formatNodePlaybookForPrompt(
+    userMessage,
+    workflowContext,
+    18,
+  );
   const findings = formatValidationIssues(issues);
 
   const content = await requestDeepSeekJson(apiKey, [
@@ -1306,10 +1466,34 @@ async function runCriticPass(
     },
   ]);
 
-  return sanitizeAiResponse(parseMaybeJson(content), workflowContext, contextNodes);
+  return sanitizeAiResponse(
+    parseMaybeJson(content),
+    workflowContext,
+    contextNodes,
+  );
 }
 
-function extractJsonStringField(raw: string, field: string) {
+function decodeJsonStringFragment(value: string, allowPartial = false) {
+  const candidate =
+    allowPartial && value.endsWith("\\") ? value.slice(0, -1) : value;
+
+  try {
+    return JSON.parse(`"${candidate}"`) as string;
+  } catch {
+    return candidate
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "\r")
+      .replace(/\\t/g, "\t")
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, "\\");
+  }
+}
+
+function extractJsonStringField(
+  raw: string,
+  field: string,
+  allowPartial = false,
+) {
   const fieldToken = `"${field}"`;
   const fieldIndex = raw.indexOf(fieldToken);
   if (fieldIndex === -1) return null;
@@ -1337,23 +1521,13 @@ function extractJsonStringField(raw: string, field: string) {
     }
 
     if (char === '"') {
-      return value
-        .replace(/\\n/g, "\n")
-        .replace(/\\r/g, "\r")
-        .replace(/\\t/g, "\t")
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, "\\");
+      return decodeJsonStringFragment(value);
     }
 
     value += char;
   }
 
-  return value
-    .replace(/\\n/g, "\n")
-    .replace(/\\r/g, "\r")
-    .replace(/\\t/g, "\t")
-    .replace(/\\"/g, '"')
-    .replace(/\\\\/g, "\\");
+  return allowPartial ? decodeJsonStringFragment(value, true) : null;
 }
 
 function parseMaybeJson(value: string): AIResponse {
@@ -1367,7 +1541,9 @@ function parseMaybeJson(value: string): AIResponse {
 
     if (firstBrace !== -1 && lastBrace > firstBrace) {
       try {
-        return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)) as AIResponse;
+        return JSON.parse(
+          cleaned.slice(firstBrace, lastBrace + 1),
+        ) as AIResponse;
       } catch {
         // continue to structured field extraction
       }
@@ -1463,7 +1639,8 @@ function buildAbTestTemplate(userMessage: string): AIResponse | null {
         alias: "variant_router",
         nodeType: "action_switch",
         label: "Route Variant",
-        description: "Recebe qualquer trigger e envia para a store correta pela tag da variante.",
+        description:
+          "Recebe qualquer trigger e envia para a store correta pela tag da variante.",
         parameters: {
           Value: "{{ $json.variant }}",
           Operation: "equals",
@@ -1507,7 +1684,8 @@ function buildAbTestTemplate(userMessage: string): AIResponse | null {
         alias: "ab_analyzer",
         nodeType: "analytics_ab",
         label: "A/B Analyzer",
-        description: "Calcula taxa de conversao, receita e vencedor entre as variantes.",
+        description:
+          "Calcula taxa de conversao, receita e vencedor entre as variantes.",
         parameters: {
           "Store Names": "ab_variant_a,ab_variant_b,ab_variant_c",
           "Variant Field": "variant",
@@ -1557,7 +1735,8 @@ function buildAbTestTemplate(userMessage: string): AIResponse | null {
         alias: "winner_found",
         nodeType: "action_if",
         label: "Winner Found?",
-        description: "Valida se ja existe amostra suficiente para declarar vencedor.",
+        description:
+          "Valida se ja existe amostra suficiente para declarar vencedor.",
         parameters: {
           "Value 1": "{{ $json.winner }}",
           Operation: "not equals",
@@ -1604,7 +1783,11 @@ function buildAbTestTemplate(userMessage: string): AIResponse | null {
       { source: "ab_analyzer", target: "winner_report" },
       { source: "ab_analyzer", target: "winner_metric" },
       { source: "ab_analyzer", target: "winner_found" },
-      { source: "winner_found", target: "announce_winner", sourceHandle: "true" },
+      {
+        source: "winner_found",
+        target: "announce_winner",
+        sourceHandle: "true",
+      },
       { source: "winner_found", target: "notify_team", sourceHandle: "true" },
     ],
   };
@@ -1734,7 +1917,8 @@ function buildLogObservabilityTemplate(userMessage: string): AIResponse | null {
         alias: "compare_logs",
         nodeType: "analytics_compare",
         label: "Comparar Logs",
-        description: "Compara volume e participação de erros entre as fontes ativas.",
+        description:
+          "Compara volume e participação de erros entre as fontes ativas.",
         parameters: {
           "Input A Label": sources[0]?.label ?? "Source A",
           "Input B Label": sources[1]?.label ?? "Source B",
@@ -1747,7 +1931,8 @@ function buildLogObservabilityTemplate(userMessage: string): AIResponse | null {
         alias: "total_errors_metric",
         nodeType: "viz_metric",
         label: "Erros Totais",
-        description: "Mostra o volume total de erros entre todas as fontes ativas.",
+        description:
+          "Mostra o volume total de erros entre todas as fontes ativas.",
         vizVariant: "errors",
         config: {
           variant: "errors",
@@ -1775,7 +1960,8 @@ function buildLogObservabilityTemplate(userMessage: string): AIResponse | null {
         alias: "error_report",
         nodeType: "viz_report",
         label: "Relatório de Erros",
-        description: "Resume a fonte mais ruidosa, total de erros e participação por origem.",
+        description:
+          "Resume a fonte mais ruidosa, total de erros e participação por origem.",
         config: {
           reportTitle: "Error Source Report",
           refreshRate: "Every 5m",
@@ -1787,7 +1973,8 @@ function buildLogObservabilityTemplate(userMessage: string): AIResponse | null {
         alias: "error_alert",
         nodeType: "monitor_alert",
         label: "Alerta: Pico de Erros",
-        description: "Dispara alerta quando o volume total de erros passa do limite.",
+        description:
+          "Dispara alerta quando o volume total de erros passa do limite.",
         parameters: {
           Threshold: "100",
           Field: "{{ input.first.total }}",
@@ -1837,7 +2024,9 @@ export async function streamDeepSeek(
   onError: (error: string) => void,
 ) {
   if (!apiKey) {
-    onError("DeepSeek API key nao configurada. Abra Settings no header e adicione a chave.");
+    onError(
+      "DeepSeek API key nao configurada. Abra Settings no header e adicione a chave.",
+    );
     return;
   }
 
@@ -1852,11 +2041,18 @@ export async function streamDeepSeek(
   const workflowPrefix = workflowContext
     ? `[Workflow JSON]\n${JSON.stringify(workflowContext, null, 2)}\n\n`
     : "";
-  const nodePlaybookPrefix = formatNodePlaybookForPrompt(userMessage, workflowContext);
+  const nodePlaybookPrefix = formatNodePlaybookForPrompt(
+    userMessage,
+    workflowContext,
+  );
   const referenceExamplesPrefix = formatRelevantWorkflowExamples(userMessage);
-  const referenceJsonExamplesPrefix = buildTemplateReferenceExamples(userMessage);
+  const referenceJsonExamplesPrefix =
+    buildTemplateReferenceExamples(userMessage);
 
-  const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+  const messages: Array<{
+    role: "system" | "user" | "assistant";
+    content: string;
+  }> = [
     { role: "system", content: SYSTEM_PROMPT },
     ...history.slice(-8),
     {
@@ -1903,6 +2099,10 @@ export async function streamDeepSeek(
 
     onDone(finalResponse);
   } catch (error) {
-    onError(error instanceof Error ? error.message : "Erro de rede ao chamar DeepSeek.");
+    onError(
+      error instanceof Error
+        ? error.message
+        : "Erro de rede ao chamar DeepSeek.",
+    );
   }
 }
