@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { checkAbacatePixChargeStatus } from "@/lib/server/abacatepay";
+import { enforceRateLimit } from "@/lib/server/rate-limit";
 import {
   buildLicensePayload,
   evaluateUserAccessState,
@@ -19,7 +20,10 @@ function isPaidProviderStatus(status: string) {
   );
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const rateLimited = enforceRateLimit("license", request);
+  if (rateLimited) return rateLimited;
+
   const session = await auth.api.getSession({
     headers: await headers(),
   });

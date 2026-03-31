@@ -1,3 +1,4 @@
+import "server-only";
 import {
   BLOCKED_GRACE_DAYS,
   type AccessState,

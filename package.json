@@ -2,14 +2,24 @@
   "name": "projeto-next",
   "version": "0.1.8",
   "private": true,
+  "overrides": {
+    "dompurify": "3.3.3"
+  },
   "scripts": {
     "dev": "bun run version:sync && bun run db:generate && next dev",
     "build": "bun run version:sync && bun run db:generate && next build",
     "preview": "next start",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "audit:deps": "bun audit",
     "lint": "biome lint .",
     "check": "biome check .",
     "format": "biome format --write .",
     "db:generate": "prisma generate",
+    "e2e:serve": "bun scripts/e2e-serve.ts",
     "postinstall": "bun run db:generate",
     "version:sync": "bun scripts/sync-version.ts",
     "verify:nodes": "bun scripts/verify-node-compatibility.ts",
@@ -37,18 +47,22 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
+    "server-only": "^0.0.1",
     "uuid": "^13.0.0",
     "zod": "^4.3.6",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.9",
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
     "@tauri-apps/cli": "2.10.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^4.1.2",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.2"
   }
 }

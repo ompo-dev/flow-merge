@@ -1,8 +1,13 @@
 import { headers } from "next/headers";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
+import { getBillingBlockReason } from "@/lib/billing-rules";
 import { PLAN_PRICING, isPlanType } from "@/lib/license";
-import { createAbacatePixCharge } from "@/lib/server/abacatepay";
+import {
+  AbacatePayRequestError,
+  createAbacatePixCharge,
+} from "@/lib/server/abacatepay";
+import { enforceRateLimit } from "@/lib/server/rate-limit";
 import {
   createPendingChargeRecord,
   evaluateUserAccessState,
@@ -15,6 +20,9 @@ const createChargeSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const rateLimited = enforceRateLimit("billing", request);
+  if (rateLimited) return rateLimited;
+
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -64,15 +72,16 @@ export async function POST(request: Request) {
 
   const user = evaluation.user;
   const planType = parsed.data.planType;
+  const blockReason = getBillingBlockReason(user.accessState, planType);
 
-  if (user.accessState === "active_monthly" && planType === "monthly") {
+  if (blockReason === "active_monthly") {
     return Response.json(
       { error: "Seu plano mensal ainda esta ativo. O novo PIX so abre quando entrar no prazo de pagamento." },
       { status: 409 },
     );
   }
 
-  if (user.accessState === "active_lifetime") {
+  if (blockReason === "active_lifetime") {
     return Response.json(
       { error: "Sua conta ja esta no plano vitalicio." },
       { status: 409 },
@@ -95,12 +104,25 @@ export async function POST(request: Request) {
     });
   }
 
-  const pixCharge = await createAbacatePixCharge({
-    userId: user.id,
-    planType,
-    email: user.email,
-    name: user.name,
-  });
+  let pixCharge: Awaited<ReturnType<typeof createAbacatePixCharge>>;
+
+  try {
+    pixCharge = await createAbacatePixCharge({
+      userId: user.id,
+      planType,
+      email: user.email,
+      name: user.name,
+    });
+  } catch (error) {
+    if (error instanceof AbacatePayRequestError) {
+      return Response.json(
+        { error: error.message },
+        { status: error.statusCode },
+      );
+    }
+
+    throw error;
+  }
 
   const charge = await createPendingChargeRecord({
     userId: user.id,

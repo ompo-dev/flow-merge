@@ -1,12 +1,16 @@
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/server/rate-limit";
 import {
   cancelUserAccess,
   evaluateUserAccessState,
   hardDeleteUserAccount,
 } from "@/lib/server/license-service";
 
-export async function POST() {
+export async function POST(request: Request) {
+  const rateLimited = enforceRateLimit("billing", request);
+  if (rateLimited) return rateLimited;
+
   const session = await auth.api.getSession({
     headers: await headers(),
   });

@@ -1,8 +1,10 @@
 import { headers } from "next/headers";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
+import { getBillingBlockReason } from "@/lib/billing-rules";
 import { PLAN_PRICING, isPlanType } from "@/lib/license";
 import { prisma } from "@/lib/prisma";
+import { enforceRateLimit } from "@/lib/server/rate-limit";
 import {
   createPendingChargeRecord,
   evaluateUserAccessState,
@@ -15,6 +17,9 @@ const simulateChargeSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const rateLimited = enforceRateLimit("billing", request);
+  if (rateLimited) return rateLimited;
+
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -83,15 +88,16 @@ export async function POST(request: Request) {
   }
 
   const planType = parsed.data.planType;
+  const blockReason = getBillingBlockReason(evaluation.user.accessState, planType);
 
-  if (evaluation.user.accessState === "active_monthly" && planType === "monthly") {
+  if (blockReason === "active_monthly") {
     return Response.json(
       { error: "O plano mensal ainda esta ativo. A simulacao so abre quando entrar no prazo de pagamento." },
       { status: 409 },
     );
   }
 
-  if (evaluation.user.accessState === "active_lifetime") {
+  if (blockReason === "active_lifetime") {
     return Response.json(
       { error: "A conta ja esta no lifetime. Nao ha simulacao pendente para abrir agora." },
       { status: 409 },

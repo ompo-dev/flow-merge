@@ -805,6 +805,7 @@ function LandingAccessNodeComponent({ data, selected }: NodeProps<AppNode>) {
                 type="button"
                 onClick={handleGoogleLogin}
                 disabled={pending}
+                data-testid="landing-login-google-button"
                 className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#238636] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#2ea043] disabled:opacity-60"
               >
                 {pending ? "Redirecionando..." : "Entrar com Google"}

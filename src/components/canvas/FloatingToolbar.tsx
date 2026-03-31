@@ -964,6 +964,7 @@ export function FloatingToolbar({
 
             <button
               onClick={() => setShowSettings(!showSettings)}
+              data-testid="toolbar-settings-button"
               className="flex h-full items-center justify-center px-3 text-[#7d8590] transition-colors hover:bg-[#21262d] hover:text-[#e6edf3]"
               title="Settings"
             >

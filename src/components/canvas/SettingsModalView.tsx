@@ -15,6 +15,11 @@ import {
 } from "lucide-react";
 import { PixChargeCard } from "@/components/billing/PixChargeCard";
 import { ModalPanelShell } from "@/components/ui/ModalPanelShell";
+import {
+  canOfferLifetimePlan,
+  canOfferMonthlyPlan,
+  hasActivePlan,
+} from "@/lib/billing-rules";
 import { exitDesktopApp, isDesktopUpdaterAvailable } from "@/lib/desktop-updater";
 import type { AppUpdateState } from "@/lib/flow-types";
 import { PLAN_PRICING, type LicenseStatusPayload } from "@/lib/license";
@@ -323,19 +328,12 @@ export function SettingsModalView({ onClose }: { onClose: () => void }) {
   const canOfferMonthlyBillingAction =
     Boolean(session) &&
     !activeCharge &&
-    (license.accessState === "trial_active" ||
-      license.accessState === "payment_pending" ||
-      license.accessState === "blocked");
+    canOfferMonthlyPlan(license.accessState);
   const canOfferLifetimeBillingAction =
     Boolean(session) &&
     !activeCharge &&
-    (license.accessState === "trial_active" ||
-      license.accessState === "payment_pending" ||
-      license.accessState === "blocked" ||
-      license.accessState === "active_monthly");
-  const canCancelCurrentPlan =
-    Boolean(session) &&
-    (license.accessState === "active_monthly" || license.accessState === "active_lifetime");
+    canOfferLifetimePlan(license.accessState);
+  const canCancelCurrentPlan = Boolean(session) && hasActivePlan(license.accessState);
   const canUseInternalRole =
     !authPending &&
     license.authenticated &&
@@ -344,8 +342,7 @@ export function SettingsModalView({ onClose }: { onClose: () => void }) {
     canUseInternalRole && canOfferMonthlyBillingAction;
   const canUseInternalLifetimeBillingAction =
     canUseInternalRole && canOfferLifetimeBillingAction;
-  const hasActivePlanCard =
-    license.accessState === "active_monthly" || license.accessState === "active_lifetime";
+  const hasActivePlanCard = hasActivePlan(license.accessState);
   const hasPlanBillingSection =
     hasActivePlanCard || canOfferMonthlyBillingAction || canOfferLifetimeBillingAction;
   const hasInternalBillingSection =
@@ -414,6 +411,7 @@ export function SettingsModalView({ onClose }: { onClose: () => void }) {
             <button
               type="button"
               onClick={() => setActiveTab("general")}
+              data-testid="settings-tab-general"
               className={`rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors ${
                 activeTab === "general"
                   ? "bg-[#1f6feb] text-white"
@@ -425,6 +423,7 @@ export function SettingsModalView({ onClose }: { onClose: () => void }) {
             <button
               type="button"
               onClick={() => setActiveTab("appearance")}
+              data-testid="settings-tab-appearance"
               className={`rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors ${
                 activeTab === "appearance"
                   ? "bg-[#1f6feb] text-white"
@@ -436,6 +435,7 @@ export function SettingsModalView({ onClose }: { onClose: () => void }) {
             <button
               type="button"
               onClick={() => setActiveTab("account")}
+              data-testid="settings-tab-account"
               className={`rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors ${
                 activeTab === "account"
                   ? "bg-[#1f6feb] text-white"
@@ -519,6 +519,7 @@ export function SettingsModalView({ onClose }: { onClose: () => void }) {
                         onChange={(event) =>
                           setReleaseChannel(event.target.value as typeof updater.releaseChannel)
                         }
+                        data-testid="settings-release-role-select"
                         className="w-full rounded-md border border-[#30363d] bg-[#11161d] px-3 py-2 text-xs text-[#e6edf3] outline-none focus:border-[#1f6feb]"
                       >
                         {visibleReleaseChannels.map((channel) => (
@@ -843,7 +844,7 @@ export function SettingsModalView({ onClose }: { onClose: () => void }) {
                       }`}
                     >
                       {hasPlanBillingSection ? (
-                        <div className="min-w-0 space-y-3">
+                        <div data-testid="account-plans-section" className="min-w-0 space-y-3">
                           <div>
                             <div className="text-[10px] uppercase tracking-[0.14em] text-[#7d8590]">
                               Planos
@@ -946,7 +947,7 @@ export function SettingsModalView({ onClose }: { onClose: () => void }) {
                       ) : null}
 
                       {hasInternalBillingSection ? (
-                        <div className="min-w-0 space-y-3">
+                        <div data-testid="account-internal-tools-section" className="min-w-0 space-y-3">
                           <div>
                             <div className="text-[10px] uppercase tracking-[0.14em] text-[#7d8590]">
                               Ferramentas internal
@@ -1017,6 +1018,7 @@ export function SettingsModalView({ onClose }: { onClose: () => void }) {
                       <button
                         type="button"
                         disabled={accountPending}
+                        data-testid="account-cancel-plan-button"
                         onClick={() => {
                           void cancelSubscription();
                         }}
@@ -1041,6 +1043,7 @@ export function SettingsModalView({ onClose }: { onClose: () => void }) {
 
                     {session ? (
                       <button
+                        data-testid="account-signout-button"
                         onClick={() => {
                           void logout();
                           onClose();
