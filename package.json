@@ -1,6 +1,6 @@
 {
   "name": "projeto-next",
-  "version": "0.2.10",
+  "version": "0.3.0",
   "private": true,
   "overrides": {
     "dompurify": "3.3.3"
