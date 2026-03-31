@@ -979,7 +979,7 @@ dependencies = [
 
 [[package]]
 name = "flow_merge"
-version = "0.2.5"
+version = "0.2.2"
 dependencies = [
  "axum",
  "log",
