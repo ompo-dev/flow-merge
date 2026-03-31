@@ -542,6 +542,26 @@ function formatMetricNumber(value: number) {
   return value.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
 }
 
+function formatCurrencyValue(value: number) {
+  if (!Number.isFinite(value)) return "R$ 0,00";
+  return value.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function getVisualizationVariant(node: AppNode) {
+  const configured =
+    typeof node.data.config?.variant === "string"
+      ? String(node.data.config.variant)
+      : typeof node.data.vizVariant === "string"
+        ? String(node.data.vizVariant)
+        : "custom";
+  return normalizeKey(configured || "custom");
+}
+
 function getRowsFromEnvelope(envelope: RuntimeEnvelope) {
   const tableArtifact = getLatestArtifact(envelope, "table");
   if (tableArtifact?.rows.length) {
@@ -589,7 +609,81 @@ function getNumericValueFromRow(row: Record<string, unknown>) {
   );
 }
 
-function extractSeries(envelope: RuntimeEnvelope) {
+function getAbExperimentRowsFromEnvelope(envelope: RuntimeEnvelope) {
+  return getRowsFromEnvelope(envelope)
+    .map((row) => {
+      const label = String(row.label ?? row.name ?? row.variant ?? "").trim();
+      const users = toNumber(row.users ?? row.count ?? 0);
+      const conversions = toNumber(row.conversions ?? row.successes ?? 0);
+      const conversionRate = toNumber(
+        row.conversionRate ??
+          row.conversion_rate ??
+          row.rate ??
+          (users > 0 ? (conversions / users) * 100 : 0),
+      );
+      const revenue = toNumber(row.revenue ?? row.amount ?? row.total ?? 0);
+
+      return {
+        label,
+        users,
+        conversions,
+        conversionRate,
+        revenue,
+      };
+    })
+    .filter(
+      (row) =>
+        Boolean(row.label) &&
+        (row.users > 0 || row.conversions > 0 || row.revenue > 0 || row.conversionRate > 0),
+    );
+}
+
+function getMetricValueForVisualizationVariant(
+  row: ReturnType<typeof getAbExperimentRowsFromEnvelope>[number],
+  variant: string,
+) {
+  switch (variant) {
+    case "revenue":
+      return row.revenue;
+    case "users":
+      return row.users;
+    case "conversion":
+      return row.conversionRate;
+    case "aov":
+      return row.users > 0 ? row.revenue / row.users : 0;
+    default:
+      return row.revenue || row.conversionRate || row.users;
+  }
+}
+
+function getLeadingAbRow(
+  rows: ReturnType<typeof getAbExperimentRowsFromEnvelope>,
+  variant: string,
+) {
+  return rows
+    .slice()
+    .sort((left, right) => {
+      const primary =
+        getMetricValueForVisualizationVariant(right, variant) -
+        getMetricValueForVisualizationVariant(left, variant);
+      if (primary !== 0) return primary;
+      if (right.revenue !== left.revenue) return right.revenue - left.revenue;
+      if (right.conversionRate !== left.conversionRate) {
+        return right.conversionRate - left.conversionRate;
+      }
+      return right.users - left.users;
+    })[0];
+}
+
+function extractSeries(envelope: RuntimeEnvelope, preferredVariant = "custom") {
+  const abRows = getAbExperimentRowsFromEnvelope(envelope);
+  if (abRows.length && preferredVariant !== "custom") {
+    return abRows.map((row) => ({
+      label: row.label,
+      value: getMetricValueForVisualizationVariant(row, preferredVariant),
+    }));
+  }
+
   const seriesArtifact = getLatestArtifact(envelope, "series");
   if (seriesArtifact?.series.length) return seriesArtifact.series;
 
@@ -654,6 +748,82 @@ function findComparisonSourceForMetric(
 }
 
 function summarizeMetric(node: AppNode, envelope: RuntimeEnvelope, fallbackLabel: string) {
+  const variant = getVisualizationVariant(node);
+  const normalizedLabel = normalizeKey(node.data.label);
+  const configuredMode =
+    typeof node.data.config?.comparisonMetricMode === "string"
+      ? normalizeKey(String(node.data.config?.comparisonMetricMode))
+      : "";
+  const abRows = getAbExperimentRowsFromEnvelope(envelope);
+  const abLeader =
+    abRows.length && (variant !== "custom" || configuredMode === "leader")
+      ? getLeadingAbRow(abRows, variant === "custom" ? "revenue" : variant)
+      : null;
+  const abPayload = expandSemanticRecord(envelope.items[0]?.json ?? {});
+  const abNeedsMoreSample =
+    String(abPayload.winner ?? "").trim() === "insufficient_sample" &&
+    typeof abPayload.minimumSample !== "undefined";
+  const isLeaderLikeMetric =
+    configuredMode === "leader" ||
+    normalizedLabel.includes("leader") ||
+    normalizedLabel.includes("vencedor") ||
+    normalizedLabel.includes("winner") ||
+    normalizedLabel.includes("noisiest") ||
+    normalizedLabel.includes("top source") ||
+    normalizedLabel.includes("maior") ||
+    normalizedLabel.includes("mais erro");
+
+  if (abLeader) {
+    switch (variant) {
+      case "revenue":
+        return {
+          value: isLeaderLikeMetric ? abLeader.label : formatCurrencyValue(abLeader.revenue),
+          rawValue: abLeader.revenue,
+          trend: `${formatCurrencyValue(abLeader.revenue)} em receita`,
+          compareLabel: abNeedsMoreSample
+            ? `Need ${abPayload.minimumSample}+ users`
+            : `${abLeader.conversions}/${abLeader.users} conv`,
+          metricLabel: fallbackLabel,
+        };
+      case "users":
+        return {
+          value: isLeaderLikeMetric ? abLeader.label : formatMetricNumber(abLeader.users),
+          rawValue: abLeader.users,
+          trend: `${abLeader.conversions}/${abLeader.users} conv`,
+          compareLabel: abNeedsMoreSample
+            ? `Need ${abPayload.minimumSample}+ users`
+            : formatCurrencyValue(abLeader.revenue),
+          metricLabel: fallbackLabel,
+        };
+      case "conversion":
+        return {
+          value: isLeaderLikeMetric
+            ? abLeader.label
+            : `${formatMetricNumber(abLeader.conversionRate)}%`,
+          rawValue: abLeader.conversionRate,
+          trend: `${abLeader.conversions}/${abLeader.users} conv`,
+          compareLabel: abNeedsMoreSample
+            ? `Need ${abPayload.minimumSample}+ users`
+            : formatCurrencyValue(abLeader.revenue),
+          metricLabel: fallbackLabel,
+        };
+      case "aov": {
+        const aov = abLeader.users > 0 ? abLeader.revenue / abLeader.users : 0;
+        return {
+          value: isLeaderLikeMetric ? abLeader.label : formatCurrencyValue(aov),
+          rawValue: aov,
+          trend: `${formatCurrencyValue(abLeader.revenue)} total`,
+          compareLabel: abNeedsMoreSample
+            ? `Need ${abPayload.minimumSample}+ users`
+            : `${abLeader.users} users`,
+          metricLabel: fallbackLabel,
+        };
+      }
+      default:
+        break;
+    }
+  }
+
   const metricArtifact = getLatestArtifact(envelope, "metric");
   if (metricArtifact) {
     return {
@@ -667,11 +837,6 @@ function summarizeMetric(node: AppNode, envelope: RuntimeEnvelope, fallbackLabel
 
   const comparisonArtifact = getLatestArtifact(envelope, "comparison");
   if (comparisonArtifact) {
-    const normalizedLabel = normalizeKey(node.data.label);
-    const configuredMode =
-      typeof node.data.config?.comparisonMetricMode === "string"
-        ? normalizeKey(String(node.data.config?.comparisonMetricMode))
-        : "";
     const matchedSource = findComparisonSourceForMetric(node, comparisonArtifact);
     const leaderSource =
       comparisonArtifact.sources.find((source) => source.label === comparisonArtifact.leader) ??
@@ -1563,21 +1728,28 @@ async function executeNode(
           if (right.rate !== left.rate) return right.rate - left.rate;
           return right.revenue - left.revenue;
         })[0];
+      const revenueLeaderRow = rows
+        .slice()
+        .sort((left, right) => {
+          if (right.revenue !== left.revenue) return right.revenue - left.revenue;
+          if (right.rate !== left.rate) return right.rate - left.rate;
+          return right.users - left.users;
+        })[0];
       const winner = winnerRow?.label ?? "insufficient_sample";
       const winningRate = winnerRow ? Number((winnerRow.rate * 100).toFixed(2)) : 0;
       const insight =
         winner === "insufficient_sample"
-          ? `Need at least ${minimumSample} users per variant before declaring a winner.`
+          ? `Need at least ${minimumSample} users per variant before declaring a winner. ${revenueLeaderRow?.label ?? "No variant"} currently leads revenue with ${formatCurrencyValue(revenueLeaderRow?.revenue ?? 0)}.`
           : `${winner} leads with ${winningRate}% conversion from ${winnerRow?.conversions ?? 0}/${winnerRow?.users ?? 0} users.`;
       const reportItems = rows.map((row) => {
         const diff = row.rate - baselineRow.rate;
         return {
           label: row.label,
-          value: `${(row.rate * 100).toFixed(2)}%`,
+          value: `${(row.rate * 100).toFixed(2)}% conv`,
           delta:
             row.label === baselineRow.label
-              ? `${row.conversions}/${row.users} conv`
-              : `${diff >= 0 ? "+" : ""}${(diff * 100).toFixed(2)}pp vs ${baselineRow.label}`,
+              ? `${formatCurrencyValue(row.revenue)} • ${row.conversions}/${row.users} conv`
+              : `${formatCurrencyValue(row.revenue)} • ${diff >= 0 ? "+" : ""}${(diff * 100).toFixed(2)}pp vs ${baselineRow.label}`,
           positive: row.label === baselineRow.label ? true : diff >= 0,
         };
       });
@@ -2161,7 +2333,7 @@ async function executeNode(
     }
 
     case "viz_chart": {
-      const series = extractSeries(input);
+      const series = extractSeries(input, getVisualizationVariant(node));
       const chartType = String(node.data.config?.chartType ?? node.data.chartType ?? "line");
       return {
         outputs: {
