@@ -35,5 +35,10 @@ describe("mcp helpers", () => {
     expect(snippets.every((entry) => entry.snippet.includes("test-token"))).toBe(
       true,
     );
+
+    const cursor = snippets.find((e) => e.id === "cursor")!;
+    expect(cursor.snippet).toContain("Authorization");
+    expect(cursor.snippet).toContain("http://127.0.0.1:45431/mcp");
+    expect(cursor.snippet).not.toContain("?token=");
   });
 });

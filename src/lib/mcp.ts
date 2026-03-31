@@ -58,6 +58,21 @@ function appendTokenToUrl(url: string, token: string) {
   return target.toString();
 }
 
+/** Base MCP URL (no query) + token, for presets where clients omit ?token= on POST (e.g. Cursor Streamable HTTP). */
+function splitConnectionUrlForPresets(connectionUrl: string): {
+  baseUrl: string;
+  token: string;
+} {
+  try {
+    const u = new URL(connectionUrl);
+    const token = u.searchParams.get("token")?.trim() ?? "";
+    u.search = "";
+    return { baseUrl: u.toString(), token };
+  } catch {
+    return { baseUrl: connectionUrl, token: "" };
+  }
+}
+
 export function createMcpAuthToken() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return `${crypto.randomUUID()}${crypto.randomUUID().replaceAll("-", "")}`;
@@ -87,6 +102,45 @@ export function buildMcpConnectionUrl(
 }
 
 export function buildMcpPresetSnippets(connectionUrl: string): McpPresetSnippet[] {
+  const { baseUrl, token } = splitConnectionUrlForPresets(connectionUrl);
+
+  const cursorSnippet =
+    token.length > 0
+      ? JSON.stringify(
+          {
+            mcpServers: {
+              "flow-merge": {
+                url: baseUrl,
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              },
+            },
+          },
+          null,
+          2,
+        )
+      : `{\n  "mcpServers": {\n    "flow-merge": {\n      "url": "${connectionUrl}"\n    }\n  }\n}`;
+
+  const vscodeSnippet =
+    token.length > 0
+      ? JSON.stringify(
+          {
+            servers: {
+              "flow-merge": {
+                type: "http",
+                url: baseUrl,
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              },
+            },
+          },
+          null,
+          2,
+        )
+      : `{\n  "servers": {\n    "flow-merge": {\n      "type": "http",\n      "url": "${connectionUrl}"\n    }\n  }\n}`;
+
   return [
     {
       id: "codex",
@@ -100,10 +154,11 @@ export function buildMcpPresetSnippets(connectionUrl: string): McpPresetSnippet[
     {
       id: "cursor",
       title: "Cursor",
-      subtitle: "MCP remoto via URL no mcp.json.",
+      subtitle:
+        "mcp.json com URL sem query e token em Authorization (o Streamable HTTP do Cursor costuma nao repassar ?token= no POST).",
       formatLabel: "JSON",
       filePath: "~/.cursor/mcp.json",
-      snippet: `{\n  "mcpServers": {\n    "flow-merge": {\n      "url": "${connectionUrl}"\n    }\n  }\n}`,
+      snippet: cursorSnippet,
     },
     {
       id: "claude_code",
@@ -120,7 +175,7 @@ export function buildMcpPresetSnippets(connectionUrl: string): McpPresetSnippet[
       subtitle: "Config local do workspace ou global.",
       formatLabel: "JSON",
       filePath: ".vscode/mcp.json",
-      snippet: `{\n  "servers": {\n    "flow-merge": {\n      "type": "http",\n      "url": "${connectionUrl}"\n    }\n  }\n}`,
+      snippet: vscodeSnippet,
     },
   ];
 }

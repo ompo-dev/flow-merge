@@ -383,15 +383,41 @@ fn is_allowed_local_host(host: &str) -> bool {
 }
 
 fn is_allowed_origin(origin: &str) -> bool {
-  if origin.trim().is_empty() || origin == "null" {
+  let trimmed = origin.trim();
+  if trimmed.is_empty() || trimmed == "null" {
     return true;
   }
 
-  Url::parse(origin)
-    .ok()
-    .and_then(|value| value.host_str().map(str::to_string))
-    .map(|host| matches!(host.as_str(), "127.0.0.1" | "localhost"))
-    .unwrap_or(false)
+  let Ok(url) = Url::parse(trimmed) else {
+    return false;
+  };
+
+  // Electron / IDE fetches often use custom schemes, not http://127.0.0.1.
+  match url.scheme() {
+    "vscode-file" | "cursor" | "cursor-app" => return true,
+    _ => {}
+  }
+
+  if let Some(host) = url.host_str() {
+    if matches!(host, "127.0.0.1" | "localhost" | "[::1]") {
+      return true;
+    }
+    if url.scheme() == "https"
+      && matches!(
+        host,
+        "cursor.com"
+          | "www.cursor.com"
+          | "cursor.sh"
+          | "vscode.dev"
+          | "github.dev"
+          | "cursorapi.com"
+      )
+    {
+      return true;
+    }
+  }
+
+  false
 }
 
 fn extract_mcp_token(uri: &Uri, headers: &HeaderMap) -> Option<String> {
@@ -1664,16 +1690,16 @@ fn spawn_runtime_server(app_handle: AppHandle, shared: RuntimeServerState) {
       }
     };
 
+    let router = Router::new()
+      .route("/mcp", post(handle_mcp_post).get(handle_mcp_get).delete(handle_mcp_delete))
+      .route("/", any(handle_runtime_webhook))
+      .route("/{*path}", any(handle_runtime_webhook))
+      .with_state(http_state);
+
     {
       let mut running = shared.running.lock().await;
       *running = true;
     }
-
-    let router = Router::new()
-      .route("/mcp", post(handle_mcp_post).get(handle_mcp_get).delete(handle_mcp_delete))
-      .route("/", any(handle_runtime_webhook))
-      .route("/*path", any(handle_runtime_webhook))
-      .with_state(http_state);
 
     if let Err(error) = axum::serve(listener, router).await {
       log::error!("runtime server crashed: {}", error);
