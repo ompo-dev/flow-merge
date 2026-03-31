@@ -207,6 +207,8 @@ bunx prisma migrate dev
 - `bun run test:e2e` -> E2E com Playwright
 - `bun run audit:deps` -> auditoria de dependencias
 - `bun run version:sync` -> sincroniza `package.json`, `Cargo.toml` e `tauri.conf.json`
+- `bun run release:prepare X.Y.Z` -> faz sync da versao, cria o commit de bump e valida com build
+- `bun run release:publish X.Y.Z` -> faz push do `main`, cria a tag e envia a tag
 - `bun run release:verify-tag` -> falha se a tag `vX.Y.Z` nao bater com os arquivos de versao do commit
 - `bun run updater:doctor` -> diagnostico do setup de updater desktop
 
@@ -240,23 +242,24 @@ O processo de release desktop nao deve ser improvisado no terminal. Use o runboo
 
 Pontos criticos:
 
+- feature branches nao recebem tag de release
+- a release nasce em `main`, depois do merge
 - a tag sempre vem depois do commit de versao
 - `version:sync` precisa refletir a versao alvo antes da tag
 - o workflow `release-desktop` agora valida isso com `bun run release:verify-tag`
 - `FLOW_MERGE_DESKTOP_FRONTEND_DIST` precisa existir nas repository variables do GitHub
 
-Fluxo resumido:
+Fluxo recomendado com branches:
 
 ```powershell
-$env:FLOW_MERGE_VERSION='X.Y.Z'
-bun run version:sync
-git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
-git commit -m "Update version to X.Y.Z in package.json, Cargo.toml, and tauri.conf.json"
-bun run build
-git push origin main
-git tag vX.Y.Z
-git push origin vX.Y.Z
+git checkout main
+git pull origin main
+git merge --no-ff feat/minha-feature
+bun run release:prepare X.Y.Z
+bun run release:publish X.Y.Z
 ```
+
+Se preferir continuar manualmente, o fluxo antigo continua valido. Os scripts acima apenas empacotam a mesma ordem correta com guardas de branch, tag e arvore limpa.
 
 ## Seguranca e limites intencionais
 

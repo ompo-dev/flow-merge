@@ -113,6 +113,18 @@ Exemplo:
   - carrega automaticamente a chave local de `.codex-temp/updater.key`
   - tambem carrega a chave publica correspondente para o app
 
+- `scripts/release-prepare.ts`
+  - valida branch e arvore limpa
+  - sincroniza a versao alvo
+  - cria o commit de bump
+  - roda `bun run build`
+
+- `scripts/release-publish.ts`
+  - valida branch, arvore limpa e versao
+  - faz push de `main`
+  - cria a tag
+  - envia a tag para o remoto
+
 - `scripts/build-updater-manifest.ts`
   - gera o `latest.json`
   - le os assets da release versionada
@@ -276,6 +288,7 @@ Regra operacional:
 Nao inverta isso.
 
 O `bun run build` executa `bun run version:sync`, mas isso nao corrige uma tag que ja foi criada no commit errado.
+O `version:sync` tambem foi ajustado para nao regredir uma nova versao local so porque o `HEAD` atual ainda e um commit tagueado antigo.
 
 Se voce fizer:
 
@@ -291,17 +304,32 @@ isso esta errado. A tag ja foi criada antes da validacao final e antes de qualqu
 O correto e:
 
 ```powershell
-$env:FLOW_MERGE_VERSION='0.2.2'
-bun run version:sync
-git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
-git commit -m "Update version to 0.2.2 in package.json, Cargo.toml, and tauri.conf.json"
-bun run build
-git push origin main
-git tag v0.2.2
-git push origin v0.2.2
+bun run release:prepare 0.2.3
+bun run release:publish 0.2.3
 ```
 
 Nao publique uma tag `vX.Y.Z` enquanto os arquivos ainda estiverem com outra versao. Isso gera artefatos com nomes e manifests inconsistentes.
+
+### Trabalhando com branches
+
+Regra pratica:
+
+- desenvolva em `feat/*`, `fix/*` ou `hotfix/*`
+- abra PR normalmente
+- faca merge em `main`
+- so depois disso prepare a release em `main`
+
+Fluxo recomendado:
+
+```powershell
+git checkout main
+git pull origin main
+git merge --no-ff feat/minha-feature
+bun run release:prepare X.Y.Z
+bun run release:publish X.Y.Z
+```
+
+Nao reserve versao em branch de feature. A versao deve nascer so no momento da release.
 
 ### Protecao no CI
 
@@ -358,6 +386,15 @@ Observacao:
 Depois das validacoes e com a arvore limpa:
 
 ```powershell
+bun run release:prepare X.Y.Z
+bun run release:publish X.Y.Z
+```
+
+Isso dispara o workflow `release-desktop`.
+
+Equivalente manual:
+
+```powershell
 $env:FLOW_MERGE_VERSION='X.Y.Z'
 bun run version:sync
 git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
@@ -367,8 +404,6 @@ git push origin main
 git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
-
-Isso dispara o workflow `release-desktop`.
 
 ### Nunca fazer
 
@@ -610,12 +645,13 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD='SUA-SENHA-AQUI'; bun run tauri build
 8. nunca criar tag `vX.Y.Z` com arquivos ainda em outra versao
 9. nunca criar a tag antes do commit de versao estar em `main`
 10. nunca trocar a chave sem avaliar impacto nos clientes ja distribuidos
+11. preferir `bun run release:prepare` e `bun run release:publish` em vez de repetir o fluxo manualmente
 
 ## Estado Atual Validado
 
 No momento em que este arquivo foi atualizado:
 
-- versao configurada no repo: `0.2.2`
+- versao configurada no repo: `0.2.3`
 - o workflow exige que a tag aponte para um commit com a mesma versao
 - workflows corretos:
   - `actions/checkout@v5`
@@ -643,6 +679,18 @@ $env:FLOW_MERGE_VERSION='X.Y.Z'
 bun run version:sync
 ```
 
+### Preparar uma release
+
+```powershell
+bun run release:prepare X.Y.Z
+```
+
+### Publicar uma release preparada
+
+```powershell
+bun run release:publish X.Y.Z
+```
+
 ### Build local assinado
 
 ```powershell
@@ -653,12 +701,6 @@ bun run tauri build
 ### Publicar uma nova release do jeito certo
 
 ```powershell
-$env:FLOW_MERGE_VERSION='X.Y.Z'
-bun run version:sync
-git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
-git commit -m "Update version to X.Y.Z in package.json, Cargo.toml, and tauri.conf.json"
-bun run build
-git push origin main
-git tag vX.Y.Z
-git push origin vX.Y.Z
+bun run release:prepare X.Y.Z
+bun run release:publish X.Y.Z
 ```

@@ -22,6 +22,8 @@
     "e2e:serve": "bun scripts/e2e-serve.ts",
     "postinstall": "bun run db:generate",
     "version:sync": "bun scripts/sync-version.ts",
+    "release:prepare": "bun scripts/release-prepare.ts",
+    "release:publish": "bun scripts/release-publish.ts",
     "release:verify-tag": "bun scripts/check-release-tag-version.ts",
     "verify:nodes": "bun scripts/verify-node-compatibility.ts",
     "updater:manifest": "bun scripts/build-updater-manifest.ts",

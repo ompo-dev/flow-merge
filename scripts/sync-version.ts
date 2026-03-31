@@ -1,6 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 
 const rootDir = process.cwd();
 const packageJsonPath = join(rootDir, "package.json");
@@ -16,16 +15,6 @@ function normalizeVersion(rawValue?: string | null) {
   return semverPattern.test(withoutPrefix) ? withoutPrefix : null;
 }
 
-function readExactTagVersion() {
-  const result = spawnSync("git", ["describe", "--tags", "--exact-match"], {
-    cwd: rootDir,
-    encoding: "utf8",
-  });
-
-  if (result.status !== 0) return null;
-  return normalizeVersion(result.stdout);
-}
-
 async function syncVersion() {
   const packageJsonRaw = await readFile(packageJsonPath, "utf8");
   const packageJson = JSON.parse(packageJsonRaw) as { version: string };
@@ -39,7 +28,6 @@ async function syncVersion() {
     normalizeVersion(process.env.FLOW_MERGE_VERSION) ??
     normalizeVersion(process.env.RELEASE_VERSION) ??
     normalizeVersion(process.env.GITHUB_REF_NAME) ??
-    readExactTagVersion() ??
     packageVersion;
 
   const changes: string[] = [];
