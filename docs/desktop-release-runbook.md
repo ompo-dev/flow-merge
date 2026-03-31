@@ -21,14 +21,20 @@ O projeto usa:
 
 O fluxo correto e:
 
-1. criar uma release versionada, por exemplo `v0.1.5`
-2. o workflow `release-desktop` compila Windows, macOS e Linux
-3. os binarios e os arquivos `.sig` sao anexados na release `v0.1.5`
-4. o mesmo workflow atualiza `channel-internal/latest.json`
-5. se a validacao interna estiver boa, promover a mesma versao para `beta`
-6. depois promover a mesma versao para `stable`
+1. sincronizar os arquivos de versao para a versao alvo, por exemplo `0.2.2`
+2. commitar esse bump de versao
+3. validar localmente com `bun run build`
+4. fazer `git push origin main`
+5. criar a tag, por exemplo `v0.2.2`, exatamente no commit que ja contem `0.2.2`
+6. fazer `git push origin v0.2.2`
+7. o workflow `release-desktop` compila Windows, macOS e Linux
+8. os binarios e os arquivos `.sig` sao anexados na release `v0.2.2`
+9. o mesmo workflow atualiza `channel-internal/latest.json`
+10. se a validacao interna estiver boa, promover a mesma versao para `beta`
+11. depois promover a mesma versao para `stable`
 
 Nao recompilamos para trocar de canal. A promocao de canal troca apenas o `latest.json` do canal.
+Nao use o `bun run build` como passo que "define" a release. Ele so valida e sincroniza o working tree. Quem define o release e a tag, e a tag precisa apontar para o commit certo.
 
 ## Conceitos Importantes
 
@@ -183,6 +189,11 @@ Criar estes valores:
 - `FLOW_MERGE_UPDATE_PUBLIC_KEY`
   - conteudo completo de `.codex-temp/updater.key.pub`
 
+- `FLOW_MERGE_DESKTOP_FRONTEND_DIST`
+  - URL publica da versao web usada pelo shell desktop em producao
+  - exemplo: `https://flow-merge.vercel.app`
+  - sem isso o workflow falha antes do build
+
 ### Chave publica atual validada no projeto
 
 No estado atual validado localmente, a chave publica em uso e:
@@ -246,17 +257,61 @@ bun run updater:doctor
 
 A versao interna do app precisa bater com a tag publicada.
 
-Se a proxima release for `v0.1.6`, atualizar antes:
+Os 3 arquivos que precisam bater com a tag sao:
 
 - `package.json`
 - `src-tauri/Cargo.toml`
 - `src-tauri/tauri.conf.json`
 
-Hoje o projeto foi alinhado e validado com a versao `0.1.5`.
+Exemplo:
 
-Se a tag for `v0.1.6`, a versao interna deve ser `0.1.6`.
+- se a release sera `v0.2.2`
+- entao esses 3 arquivos ja precisam estar commitados como `0.2.2`
+
+Regra operacional:
+
+- primeiro existe o commit de versao
+- depois existe a tag
+
+Nao inverta isso.
+
+O `bun run build` executa `bun run version:sync`, mas isso nao corrige uma tag que ja foi criada no commit errado.
+
+Se voce fizer:
+
+```powershell
+git push origin main
+git tag v0.2.2
+git push origin v0.2.2
+bun run build
+```
+
+isso esta errado. A tag ja foi criada antes da validacao final e antes de qualquer ajuste local restante.
+
+O correto e:
+
+```powershell
+$env:FLOW_MERGE_VERSION='0.2.2'
+bun run version:sync
+git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
+git commit -m "Update version to 0.2.2 in package.json, Cargo.toml, and tauri.conf.json"
+bun run build
+git push origin main
+git tag v0.2.2
+git push origin v0.2.2
+```
 
 Nao publique uma tag `vX.Y.Z` enquanto os arquivos ainda estiverem com outra versao. Isso gera artefatos com nomes e manifests inconsistentes.
+
+### Protecao no CI
+
+O workflow `release-desktop` agora roda:
+
+```powershell
+bun run release:verify-tag
+```
+
+Esse passo falha cedo se a tag `vX.Y.Z` apontar para um commit cujo `package.json`, `Cargo.toml` ou `tauri.conf.json` ainda nao estejam em `X.Y.Z`.
 
 ## Checklist de Release
 
@@ -276,6 +331,13 @@ Get-ChildItem .codex-temp
 - `src-tauri/Cargo.toml`
 - `src-tauri/tauri.conf.json`
 
+Ou, de forma preferida:
+
+```powershell
+$env:FLOW_MERGE_VERSION='X.Y.Z'
+bun run version:sync
+```
+
 4. Validar localmente:
 
 ```powershell
@@ -289,20 +351,37 @@ bun run updater:doctor
 Observacao:
 
 - se a chave privada tiver senha, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` precisa estar definida antes do `bun run tauri build`
+- se `bun run build` alterar arquivos versionados, nao crie a tag ainda; commit esse ajuste primeiro
 
 ### Publicar a release versionada
 
-Depois das validacoes:
+Depois das validacoes e com a arvore limpa:
 
 ```powershell
-git add .
-git commit -m "Prepare vX.Y.Z release"
+$env:FLOW_MERGE_VERSION='X.Y.Z'
+bun run version:sync
+git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
+git commit -m "Update version to X.Y.Z in package.json, Cargo.toml, and tauri.conf.json"
+bun run build
 git push origin main
 git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
 Isso dispara o workflow `release-desktop`.
+
+### Nunca fazer
+
+Nao faca isso:
+
+```powershell
+git push origin main
+git tag vX.Y.Z
+git push origin vX.Y.Z
+bun run build
+```
+
+Nesse caso, a tag aponta para o commit anterior ao build. Se o build ou `version:sync` alterarem a versao, a tag continua errada.
 
 ## O Que Acontece no GitHub
 
@@ -322,12 +401,14 @@ O que ele faz:
 3. valida se:
    - `TAURI_SIGNING_PRIVATE_KEY` existe
    - `FLOW_MERGE_UPDATE_PUBLIC_KEY` existe
+   - `FLOW_MERGE_DESKTOP_FRONTEND_DIST` existe
    - a chave consegue assinar um arquivo teste
-4. roda `tauri-apps/tauri-action@action-v0.6.2`
-5. publica a release versionada
-6. baixa os artefatos da propria release
-7. gera o `latest.json`
-8. publica `latest.json` em `channel-internal`
+4. valida se a tag bate com a versao commitada via `bun run release:verify-tag`
+5. roda `tauri-apps/tauri-action@action-v0.6.2`
+6. publica a release versionada
+7. baixa os artefatos da propria release
+8. gera o `latest.json`
+9. publica `latest.json` em `channel-internal`
 
 ### Workflow `promote-channel`
 
@@ -467,6 +548,32 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD='SUA-SENHA-AQUI'; bun run tauri build
 bun run updater:doctor
 ```
 
+### 7. A tag foi criada no commit errado
+
+Sintoma comum:
+
+- a tag e `v0.2.2`
+- mas o commit marcado ainda tinha `0.2.1`
+- o workflow gera release com codigo antigo ou com contexto incoerente
+
+Conserto:
+
+```powershell
+git tag -d v0.2.2
+git push origin :refs/tags/v0.2.2
+git tag v0.2.2 <commit-correto>
+git push origin v0.2.2
+```
+
+Se o commit correto for o `HEAD` atual:
+
+```powershell
+git tag -d v0.2.2
+git push origin :refs/tags/v0.2.2
+git tag v0.2.2
+git push origin v0.2.2
+```
+
 ## Regras Para Futuras IAs
 
 Se uma IA futura precisar operar esse sistema, deve seguir esta ordem:
@@ -488,6 +595,7 @@ bun run updater:doctor
 5. antes de publicar release, validar:
 
 ```powershell
+bun run version:sync
 bun run build
 cargo check --manifest-path src-tauri/Cargo.toml
 ```
@@ -500,14 +608,15 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD='SUA-SENHA-AQUI'; bun run tauri build
 
 7. nunca assumir que a chave publica do repo e a mesma da release sem verificar
 8. nunca criar tag `vX.Y.Z` com arquivos ainda em outra versao
-9. nunca trocar a chave sem avaliar impacto nos clientes ja distribuidos
+9. nunca criar a tag antes do commit de versao estar em `main`
+10. nunca trocar a chave sem avaliar impacto nos clientes ja distribuidos
 
 ## Estado Atual Validado
 
 No momento em que este arquivo foi atualizado:
 
-- versao validada: `0.1.5`
-- tag publicada: `v0.1.5`
+- versao configurada no repo: `0.2.2`
+- o workflow exige que a tag aponte para um commit com a mesma versao
 - workflows corretos:
   - `actions/checkout@v5`
   - `tauri-apps/tauri-action@action-v0.6.2`
@@ -527,6 +636,13 @@ Get-Content .codex-temp/updater.key.pub
 bun run updater:doctor
 ```
 
+### Sincronizar versao manualmente
+
+```powershell
+$env:FLOW_MERGE_VERSION='X.Y.Z'
+bun run version:sync
+```
+
 ### Build local assinado
 
 ```powershell
@@ -534,9 +650,14 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD='SUA-SENHA-AQUI'
 bun run tauri build
 ```
 
-### Publicar uma nova tag
+### Publicar uma nova release do jeito certo
 
 ```powershell
+$env:FLOW_MERGE_VERSION='X.Y.Z'
+bun run version:sync
+git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
+git commit -m "Update version to X.Y.Z in package.json, Cargo.toml, and tauri.conf.json"
+bun run build
 git push origin main
 git tag vX.Y.Z
 git push origin vX.Y.Z
