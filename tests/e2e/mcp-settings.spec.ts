@@ -32,4 +32,10 @@ test("shows the MCP settings tab with local endpoint snippets", async ({ page })
   await expect(page.getByTestId("settings-mcp-clients-card")).toContainText(
     "Claude Code",
   );
+  await expect(page.getByTestId("settings-mcp-panel")).toContainText(
+    "mutacoes deterministicas",
+  );
+  await expect(page.getByTestId("settings-mcp-panel")).toContainText(
+    "Apply workflow change set",
+  );
 });

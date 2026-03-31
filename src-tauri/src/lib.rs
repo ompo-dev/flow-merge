@@ -564,12 +564,12 @@ fn mcp_server_info() -> Value {
     "name": "flow-merge",
     "title": "Flow Merge Local MCP",
     "version": env!("CARGO_PKG_VERSION"),
-    "description": "Local-first MCP server backed by the Flow Merge desktop runtime and native workspace assistant.",
+    "description": "Local-first MCP server backed by the Flow Merge desktop runtime and direct workspace mutation tools.",
   })
 }
 
 fn mcp_instructions() -> String {
-  "Use Flow Merge to inspect the local workspace, read workflow JSON, switch the active workflow, and run the native assistant that can create or modify flows in the same local canvas used by the desktop app.".to_string()
+  "Use Flow Merge to inspect the local workspace, read workflow JSON and node catalog data, create projects or workflows when needed, and apply deterministic change sets to the same local canvas used by the desktop app. Do not route requests through the in-app AI; the MCP client should reason with its own model and use these tools directly.".to_string()
 }
 
 fn mcp_tools_list() -> Value {
@@ -579,6 +579,15 @@ fn mcp_tools_list() -> Value {
         "name": "flow_merge_workspace_snapshot",
         "title": "Workspace snapshot",
         "description": "Return the local Flow Merge workspace summary, active workflow, license status, and MCP availability.",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "flow_merge_get_node_catalog",
+        "title": "Get node catalog",
+        "description": "Read the local Flow Merge node catalog, including node types, schemas, config fields, and defaults.",
         "inputSchema": {
           "type": "object",
           "additionalProperties": false
@@ -600,6 +609,91 @@ fn mcp_tools_list() -> Value {
         }
       },
       {
+        "name": "flow_merge_create_project",
+        "title": "Create project",
+        "description": "Create a local Flow Merge project and optionally activate it in the desktop app.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Project name."
+            },
+            "description": {
+              "type": "string"
+            },
+            "accent": {
+              "type": "string",
+              "description": "Optional accent color, e.g. #58a6ff."
+            },
+            "surface": {
+              "type": "string",
+              "enum": ["app", "landing"]
+            },
+            "activate": {
+              "type": "boolean",
+              "description": "When false, restore the previously active project/workflow after creation."
+            }
+          },
+          "required": ["name"],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "flow_merge_create_workflow",
+        "title": "Create workflow",
+        "description": "Create a workflow in the target project and optionally activate it in the desktop app.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Workflow name."
+            },
+            "projectId": {
+              "type": "string",
+              "description": "Optional target project id. Defaults to the active project."
+            },
+            "description": {
+              "type": "string"
+            },
+            "accent": {
+              "type": "string"
+            },
+            "surface": {
+              "type": "string",
+              "enum": ["app", "landing"]
+            },
+            "tags": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "activate": {
+              "type": "boolean",
+              "description": "When false, restore the previously active project/workflow after creation."
+            }
+          },
+          "required": ["name"],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "flow_merge_apply_workspace_change_set",
+        "title": "Apply workspace change set",
+        "description": "Apply deterministic project, workflow, and canvas-tool mutations directly to the local Flow Merge workspace.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "operations": {
+              "type": "array",
+              "description": "Ordered workspace operations. Supported types: update_project, toggle_project_active, delete_project, duplicate_project, update_workflow, toggle_workflow_active, delete_workflow, duplicate_workflow, set_active_project, set_active_tool."
+            }
+          },
+          "required": ["operations"],
+          "additionalProperties": false
+        }
+      },
+      {
         "name": "flow_merge_set_active_workflow",
         "title": "Set active workflow",
         "description": "Switch the active project and workflow inside the local Flow Merge desktop app.",
@@ -616,51 +710,32 @@ fn mcp_tools_list() -> Value {
         }
       },
       {
-        "name": "flow_merge_run_assistant",
-        "title": "Run native assistant",
-        "description": "Run the same native Flow Merge assistant used by the in-app chat, optionally applying the generated changes to the local canvas.",
+        "name": "flow_merge_apply_workflow_change_set",
+        "title": "Apply workflow change set",
+        "description": "Apply a deterministic batch of node and edge mutations directly to a local Flow Merge workflow.",
         "inputSchema": {
           "type": "object",
           "properties": {
-            "prompt": {
-              "type": "string",
-              "description": "Markdown prompt for the native Flow Merge assistant."
-            },
             "workflowId": {
               "type": "string",
               "description": "Optional target workflow id. Defaults to the active workflow."
             },
-            "applyChanges": {
+            "activate": {
               "type": "boolean",
-              "description": "When true, the assistant mutates the local canvas."
+              "description": "When false, Flow Merge restores the previously active workflow after applying the change set."
             },
-            "contextNodeIds": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "Optional node ids to send as context."
-            },
-            "history": {
-              "type": "array",
-              "items": {
+              "workflowPatch": {
                 "type": "object",
-                "properties": {
-                  "role": {
-                    "type": "string",
-                    "enum": ["user", "assistant"]
-                  },
-                  "content": {
-                    "type": "string"
-                  }
-                },
-                "required": ["role", "content"],
-                "additionalProperties": false
+                "description": "Optional workflow metadata patch. Supports name, description, accent, surface, tags, and active."
               },
-              "description": "Optional short chat history to preserve context."
-            }
-          },
-          "required": ["prompt"],
-          "additionalProperties": false
-        }
+              "operations": {
+                "type": "array",
+                "description": "Ordered operations. Supported types: create_node, create_shape, update_node, move_node, resize_node, duplicate_node, delete_node, create_edge, delete_edge. create_node accepts nodeType, optional alias, optional position {x,y}, and optional data. create_shape accepts shapeType plus optional size, text, fill, and strokeColor. update, move, resize, duplicate, and delete operations reference nodes with node { nodeId | alias | label }. create_edge uses source and target references. delete_edge accepts edgeId or source/target references."
+              }
+            },
+            "required": ["operations"],
+            "additionalProperties": false
+          }
       }
     ]
   })
@@ -689,10 +764,24 @@ fn mcp_resources_list() -> Value {
         "title": "Active workflow",
         "description": "JSON do workflow atualmente ativo.",
         "mimeType": "application/json"
-      }
-    ]
-  })
-}
+      },
+        {
+          "uri": "flowmerge://catalog/nodes",
+          "name": "node-catalog",
+          "title": "Node catalog",
+          "description": "Catalogo local de node types, schemas, config fields e defaults do Flow Merge.",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "flowmerge://canvas/tools",
+          "name": "canvas-tools",
+          "title": "Canvas tools",
+          "description": "Ferramentas de desenho e edicao do canvas local.",
+          "mimeType": "application/json"
+        }
+      ]
+    })
+  }
 
 fn mcp_resource_templates_list() -> Value {
   json!({
@@ -714,7 +803,7 @@ fn mcp_prompts_list() -> Value {
       {
         "name": "build_local_workflow",
         "title": "Build local workflow",
-        "description": "Guide the client to ask Flow Merge to create a new local workflow.",
+        "description": "Guide the MCP client to inspect the workspace and apply a deterministic change set in Flow Merge.",
         "arguments": [
           {
             "name": "goal",
@@ -731,7 +820,7 @@ fn mcp_prompts_list() -> Value {
       {
         "name": "integrate_project_signal",
         "title": "Integrate project signal",
-        "description": "Ask Flow Merge to connect a signal from the current codebase to the local canvas.",
+        "description": "Guide the MCP client to connect a signal from the current codebase to the local canvas using direct tools.",
         "arguments": [
           {
             "name": "signal",
@@ -746,37 +835,37 @@ fn mcp_prompts_list() -> Value {
 
 fn mcp_prompt_result(name: &str, arguments: Option<&Value>) -> Option<Value> {
   match name {
-    "build_local_workflow" => {
-      let goal = arguments
-        .and_then(|value| value.get("goal"))
-        .and_then(Value::as_str)
-        .unwrap_or("um novo workflow no canvas");
+      "build_local_workflow" => {
+        let goal = arguments
+          .and_then(|value| value.get("goal"))
+          .and_then(Value::as_str)
+          .unwrap_or("um novo workflow no canvas");
 
       Some(json!({
         "description": "Build a local Flow Merge workflow",
+          "messages": [
+            {
+              "role": "user",
+              "content": {
+                "type": "text",
+                "text": format!("Monte um workflow local no Flow Merge para {}. Primeiro leia o workspace snapshot, as canvas tools e o catalogo de nodes. Se necessario, crie projeto ou workflow com um workspace change set. Depois use apenas as ferramentas deterministicas do MCP para aplicar um workflow change set no canvas local.", goal)
+              }
+            }
+          ]
+        }))
+      }
+    "analyze_active_workflow" => Some(json!({
+      "description": "Analyze the active Flow Merge workflow",
         "messages": [
           {
             "role": "user",
             "content": {
               "type": "text",
-              "text": format!("Use o Flow Merge para montar um workflow local para {}. Primeiro leia o workspace atual e depois execute o assistente nativo com applyChanges=true.", goal)
+              "text": "Leia o workflow ativo do Flow Merge e explique o que ele mede ou executa. Identifique gaps e proponha a proxima acao operacional. Se for necessario mudar o canvas, descreva o change set antes de aplica-lo com as ferramentas deterministicas."
             }
           }
         ]
-      }))
-    }
-    "analyze_active_workflow" => Some(json!({
-      "description": "Analyze the active Flow Merge workflow",
-      "messages": [
-        {
-          "role": "user",
-          "content": {
-            "type": "text",
-            "text": "Leia o workflow ativo do Flow Merge, explique o que ele mede ou executa, aponte gaps de observabilidade e sugira a proxima acao operacional."
-          }
-        }
-      ]
-    })),
+      })),
     "integrate_project_signal" => {
       let signal = arguments
         .and_then(|value| value.get("signal"))
@@ -785,16 +874,16 @@ fn mcp_prompt_result(name: &str, arguments: Option<&Value>) -> Option<Value> {
 
       Some(json!({
         "description": "Integrate a project signal into Flow Merge",
-        "messages": [
-          {
-            "role": "user",
-            "content": {
-              "type": "text",
-              "text": format!("Use o workspace atual do Flow Merge para integrar {} ao canvas local. Leia o snapshot do workspace, escolha o workflow certo e rode o assistente nativo para criar ou ajustar o fluxo.", signal)
+          "messages": [
+            {
+              "role": "user",
+              "content": {
+                "type": "text",
+                "text": format!("Use o workspace atual do Flow Merge para integrar {} ao canvas local. Leia o snapshot do workspace, as canvas tools e o catalogo de nodes, escolha o workflow certo e aplique change sets deterministicos para criar ou ajustar o fluxo.", signal)
+              }
             }
-          }
-        ]
-      }))
+          ]
+        }))
     }
     _ => None,
   }
@@ -844,31 +933,92 @@ async fn dispatch_mcp_bridge_request(
   }
 }
 
-fn tool_result_text(name: &str, payload: &Value) -> String {
-  match name {
-    "flow_merge_run_assistant" => {
-      let message = payload
-        .get("response")
-        .and_then(|value| value.get("message"))
+  fn tool_result_text(name: &str, payload: &Value) -> String {
+    match name {
+    "flow_merge_apply_workspace_change_set" => {
+      let updated_projects = payload
+        .get("updatedProjectIds")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0);
+      let duplicated_projects = payload
+        .get("duplicatedProjectIds")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0);
+      let updated_workflows = payload
+        .get("updatedWorkflowIds")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0);
+      let duplicated_workflows = payload
+        .get("duplicatedWorkflowIds")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0);
+      let active_tool = payload
+        .get("activeTool")
         .and_then(Value::as_str)
-        .unwrap_or("Flow Merge assistant executed.");
-      let workflow_id = payload
-        .get("workflowId")
-        .and_then(Value::as_str)
-        .unwrap_or("active workflow");
+        .unwrap_or("select");
+
+      format!(
+        "Workspace change set aplicado no Flow Merge.\n\nProjetos atualizados: {updated_projects}\nProjetos duplicados: {duplicated_projects}\nWorkflows atualizados: {updated_workflows}\nWorkflows duplicados: {duplicated_workflows}\nFerramenta ativa: {active_tool}"
+      )
+    }
+    "flow_merge_apply_workflow_change_set" => {
+        let workflow_id = payload
+          .get("workflowId")
+          .and_then(Value::as_str)
+          .unwrap_or("active workflow");
       let created = payload
-        .get("createdNodeIds")
+        .get("createdNodes")
         .and_then(Value::as_array)
         .map(Vec::len)
         .unwrap_or(0);
       let edges = payload
-        .get("appliedEdges")
+        .get("createdEdgeCount")
         .and_then(Value::as_u64)
         .unwrap_or(0);
+      let updated = payload
+        .get("updatedNodeIds")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0);
+      let deleted = payload
+        .get("deletedNodeIds")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0);
 
-      format!(
-        "{message}\n\nWorkflow alvo: {workflow_id}\nNodes criados: {created}\nEdges aplicadas: {edges}"
-      )
+        format!(
+          "Change set aplicado no Flow Merge.\n\nWorkflow alvo: {workflow_id}\nNodes criados: {created}\nNodes atualizados: {updated}\nNodes removidos: {deleted}\nEdges criadas: {edges}"
+        )
+      }
+    "flow_merge_create_project" => {
+      let project_name = payload
+        .get("project")
+        .and_then(|value| value.get("name"))
+        .and_then(Value::as_str)
+        .unwrap_or("novo projeto");
+      let workflow_name = payload
+        .get("defaultWorkflow")
+        .and_then(|value| value.get("name"))
+        .and_then(Value::as_str)
+        .unwrap_or("workflow inicial");
+
+      format!("Projeto criado no Flow Merge: {project_name}\nWorkflow inicial: {workflow_name}")
+    }
+    "flow_merge_create_workflow" => {
+      let workflow_name = payload
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("novo workflow");
+      let project_id = payload
+        .get("projectId")
+        .and_then(Value::as_str)
+        .unwrap_or("projeto ativo");
+
+      format!("Workflow criado no Flow Merge: {workflow_name}\nProjeto: {project_id}")
     }
     _ => serde_json::to_string_pretty(payload).unwrap_or_else(|_| payload.to_string()),
   }
@@ -1162,11 +1312,47 @@ async fn handle_mcp_post(
           )
           .await
         }
+        "flow_merge_get_node_catalog" => {
+          dispatch_mcp_bridge_request(
+            &state.app_handle,
+            &state.mcp,
+            "get_node_catalog",
+            json!({}),
+          )
+          .await
+        }
         "flow_merge_get_workflow" => {
           dispatch_mcp_bridge_request(
             &state.app_handle,
             &state.mcp,
             "get_workflow",
+            params.get("arguments").cloned().unwrap_or_else(|| json!({})),
+          )
+          .await
+        }
+        "flow_merge_create_project" => {
+          dispatch_mcp_bridge_request(
+            &state.app_handle,
+            &state.mcp,
+            "create_project",
+            params.get("arguments").cloned().unwrap_or_else(|| json!({})),
+          )
+          .await
+        }
+        "flow_merge_create_workflow" => {
+          dispatch_mcp_bridge_request(
+            &state.app_handle,
+            &state.mcp,
+            "create_workflow",
+            params.get("arguments").cloned().unwrap_or_else(|| json!({})),
+          )
+          .await
+        }
+        "flow_merge_apply_workspace_change_set" => {
+          dispatch_mcp_bridge_request(
+            &state.app_handle,
+            &state.mcp,
+            "apply_workspace_change_set",
             params.get("arguments").cloned().unwrap_or_else(|| json!({})),
           )
           .await
@@ -1180,11 +1366,11 @@ async fn handle_mcp_post(
           )
           .await
         }
-        "flow_merge_run_assistant" => {
+        "flow_merge_apply_workflow_change_set" => {
           dispatch_mcp_bridge_request(
             &state.app_handle,
             &state.mcp,
-            "run_assistant",
+            "apply_workflow_change_set",
             params.get("arguments").cloned().unwrap_or_else(|| json!({})),
           )
           .await

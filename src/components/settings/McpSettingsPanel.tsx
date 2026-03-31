@@ -79,7 +79,7 @@ export function McpSettingsPanel() {
         <div className="flex items-start justify-between gap-3">
           <SectionTitle
             title="MCP local"
-            subtitle="Expose o mesmo assistente nativo do Flow Merge para Cursor, Claude Code, Codex e outros clientes MCP."
+            subtitle="Expose o workspace local e as mutacoes deterministicas do Flow Merge para Cursor, Claude Code, Codex e outros clientes MCP."
           />
           <div
             className={`rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] ${
@@ -206,7 +206,7 @@ export function McpSettingsPanel() {
       >
         <SectionTitle
           title="Clientes"
-          subtitle="Snippets prontos para colar no cliente MCP que voce quiser."
+          subtitle="Snippets prontos para colar no cliente MCP que vai raciocinar com o proprio modelo sobre o seu workspace local."
         />
         <div className="mt-3 grid gap-3 xl:grid-cols-2">
           {presetSnippets.map((preset) => (
@@ -249,7 +249,7 @@ export function McpSettingsPanel() {
         <div className="rounded-lg border border-[#30363d] bg-[#0d1117] p-4">
           <SectionTitle
             title="Tools"
-            subtitle="Acoes que o cliente MCP pode chamar."
+            subtitle="Leitura e mutacao direta do canvas. O cliente externo decide; o Flow Merge so aplica no workspace local."
           />
           <div className="mt-3 space-y-3">
             {MCP_TOOL_CATALOG.map((entry) => (
@@ -272,7 +272,7 @@ export function McpSettingsPanel() {
         <div className="rounded-lg border border-[#30363d] bg-[#0d1117] p-4">
           <SectionTitle
             title="Resources"
-            subtitle="Leitura de contexto do workspace local."
+            subtitle="Contexto local para o cliente MCP ler antes de planejar as mudancas."
           />
           <div className="mt-3 space-y-3">
             {MCP_RESOURCE_CATALOG.map((entry) => (
@@ -295,7 +295,7 @@ export function McpSettingsPanel() {
         <div className="rounded-lg border border-[#30363d] bg-[#0d1117] p-4">
           <SectionTitle
             title="Prompts"
-            subtitle="Entradas prontas para clientes que usam prompts MCP."
+            subtitle="Prompts de orientacao para clientes MCP que suportam prompts nativos."
           />
           <div className="mt-3 space-y-3">
             {MCP_PROMPT_CATALOG.map((entry) => (

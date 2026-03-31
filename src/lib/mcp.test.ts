@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MCP_RESOURCE_CATALOG, MCP_TOOL_CATALOG } from "@/lib/mcp-catalog";
 import {
   buildMcpConnectionUrl,
   buildMcpPresetSnippets,
@@ -40,5 +41,21 @@ describe("mcp helpers", () => {
     expect(cursor.snippet).toContain("Authorization");
     expect(cursor.snippet).toContain("http://127.0.0.1:45431/mcp");
     expect(cursor.snippet).not.toContain("?token=");
+  });
+
+  it("documents direct MCP tools instead of the native assistant bridge", () => {
+    const toolNames = MCP_TOOL_CATALOG.map((entry) => entry.name);
+
+    expect(toolNames).toContain("flow_merge_get_node_catalog");
+    expect(toolNames).toContain("flow_merge_create_workflow");
+    expect(toolNames).toContain("flow_merge_apply_workspace_change_set");
+    expect(toolNames).toContain("flow_merge_apply_workflow_change_set");
+    expect(toolNames).not.toContain("flow_merge_run_assistant");
+  });
+
+  it("documents canvas tools as a readable MCP resource", () => {
+    const resourceNames = MCP_RESOURCE_CATALOG.map((entry) => entry.name);
+
+    expect(resourceNames).toContain("flowmerge://canvas/tools");
   });
 });
