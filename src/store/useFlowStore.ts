@@ -25,12 +25,33 @@ import { getDefaultProgrammableConfig } from "@/lib/node-programming";
 import { executeWorkflowRun } from "@/lib/runtime-engine";
 import { applyWorkflowIntelligence } from "@/lib/workflow-intelligence";
 import {
+  deleteProjectStore,
   getEmptyProjectStore,
   getProjectRuntimeStore,
   persistRuntimeStores,
   readPersistedRuntimeStores,
 } from "@/lib/runtime-storage";
-import { clearFlowMergeLocalStorage } from "@/lib/local-workspace";
+import { clearFlowMergeStorage } from "@/lib/local-workspace";
+import { migrateFromLocalStorageIfNeeded } from "@/lib/storage/migrate-from-localstorage";
+import {
+  deleteProject as dbDeleteProject,
+  saveAllProjects,
+} from "@/lib/storage/projects-store";
+import {
+  clearAllThreads,
+  getAllThreads,
+  deleteThread as dbDeleteThread,
+  saveAllThreads,
+  saveThread,
+} from "@/lib/storage/chat-store";
+import { getSetting, setSetting } from "@/lib/storage/settings-store";
+import { getAllProjects } from "@/lib/storage/projects-store";
+import {
+  deleteWorkflow as dbDeleteWorkflow,
+  deleteWorkflowsByProject,
+  getAllWorkflows,
+  saveAllWorkflows,
+} from "@/lib/storage/workflows-store";
 import type {
   AppUpdateEvent,
   AppUpdateSnapshot,
@@ -63,11 +84,6 @@ import type {
   WorkflowExecutionRequest,
   WorkflowRunResult,
 } from "@/lib/runtime-types";
-
-const DEEPSEEK_STORAGE_KEY = "flow-merge-deepseek-key";
-const UPDATER_STORAGE_KEY = "flow-merge-updater";
-const CHAT_THREADS_STORAGE_KEY = "flow-merge-chat-threads";
-const CHAT_ACTIVE_ID_STORAGE_KEY = "flow-merge-active-chat-id";
 const CHAT_WELCOME_MESSAGE =
   "Eu posso montar workflows, criar dashboards e editar nos do canvas. Use Ctrl+click para mandar nos como contexto para a IA.";
 const DEFAULT_UPDATER_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -85,6 +101,7 @@ function toNodeRuntimeInfo(snapshot: RuntimeNodeSnapshot): NodeRuntimeInfo {
 }
 
 interface FlowState {
+  isHydrated: boolean;
   projects: Project[];
   workflows: Workflow[];
   executions: Execution[];
@@ -105,6 +122,7 @@ interface FlowState {
   deepseekKey: string;
   updater: AppUpdateSnapshot;
 
+  hydrateFromStorage: () => Promise<void>;
   setRuntimeBaseUrl: (url: string | null) => void;
   setActiveProject: (id: string) => void;
   createProject: (name?: string) => Project;
@@ -140,7 +158,7 @@ interface FlowState {
   createChat: () => string;
   deleteChat: (id: string) => void;
   setDeepseekKey: (key: string) => void;
-  resetLocalWorkspace: () => void;
+  resetLocalWorkspace: () => Promise<void>;
   hydrateUpdaterConfig: (config: DesktopUpdaterConfig | null) => void;
   syncUpdaterAccess: (allowedChannels: ReleaseChannel[]) => void;
   handleUpdaterEvent: (event: AppUpdateEvent) => void;
@@ -257,38 +275,17 @@ function sanitizeChatThread(thread: Partial<ChatThread>, index: number): ChatThr
 }
 
 function getInitialChatState() {
-  if (typeof window === "undefined") return createDefaultChatState();
-
-  try {
-    const rawThreads = window.localStorage.getItem(CHAT_THREADS_STORAGE_KEY);
-    if (!rawThreads) return createDefaultChatState();
-
-    const parsed = JSON.parse(rawThreads) as Partial<ChatThread>[];
-    if (!Array.isArray(parsed) || parsed.length === 0) return createDefaultChatState();
-
-    const chatThreads = parsed.map((thread, index) => sanitizeChatThread(thread, index));
-    const persistedActiveId = window.localStorage.getItem(CHAT_ACTIVE_ID_STORAGE_KEY);
-    const activeChatId =
-      persistedActiveId && chatThreads.some((thread) => thread.id === persistedActiveId)
-        ? persistedActiveId
-        : chatThreads[0].id;
-
-    return { chatThreads, activeChatId };
-  } catch {
-    return createDefaultChatState();
-  }
+  return createDefaultChatState();
 }
 
 function persistChatState(chatThreads: ChatThread[], activeChatId: string) {
   if (typeof window === "undefined") return;
-
-  window.localStorage.setItem(CHAT_THREADS_STORAGE_KEY, JSON.stringify(chatThreads));
-  window.localStorage.setItem(CHAT_ACTIVE_ID_STORAGE_KEY, activeChatId);
+  void saveAllThreads(chatThreads).catch(() => {});
+  void setSetting("active-chat-id", activeChatId).catch(() => {});
 }
 
 function getInitialDeepseekKey() {
-  if (typeof window === "undefined") return "";
-  return window.localStorage.getItem(DEEPSEEK_STORAGE_KEY) ?? "";
+  return "";
 }
 
 function getVisibleUpdaterChannels(
@@ -339,64 +336,12 @@ function createDefaultUpdaterState(): AppUpdateSnapshot {
 }
 
 function getInitialUpdaterState(): AppUpdateSnapshot {
-  const defaults = createDefaultUpdaterState();
-  if (typeof window === "undefined") return defaults;
-
-  try {
-    const raw = window.localStorage.getItem(UPDATER_STORAGE_KEY);
-    if (!raw) return defaults;
-
-    const parsed = JSON.parse(raw) as Partial<AppUpdateSnapshot>;
-    const supportedChannels = normalizeReleaseChannels(
-      parsed.supportedChannels,
-      defaults.supportedChannels,
-    );
-    const allowedChannels = normalizeReleaseChannels(
-      parsed.allowedChannels,
-      defaults.allowedChannels,
-    );
-    return {
-      ...defaults,
-      releaseChannel: clampReleaseChannel(
-        parsed.releaseChannel,
-        allowedChannels,
-        supportedChannels,
-      ),
-      supportedChannels,
-      allowedChannels,
-      autoUpdateEnabled:
-        typeof parsed.autoUpdateEnabled === "boolean" ? parsed.autoUpdateEnabled : true,
-      currentVersion:
-        typeof parsed.currentVersion === "string" ? parsed.currentVersion : defaults.currentVersion,
-      repository: typeof parsed.repository === "string" ? parsed.repository : null,
-      lastCheckedAt:
-        typeof parsed.lastCheckedAt === "number" ? parsed.lastCheckedAt : defaults.lastCheckedAt,
-      lastUpdateError:
-        typeof parsed.lastUpdateError === "string" ? parsed.lastUpdateError : defaults.lastUpdateError,
-      checkIntervalMs:
-        typeof parsed.checkIntervalMs === "number"
-          ? parsed.checkIntervalMs
-          : defaults.checkIntervalMs,
-      feedUrls:
-        parsed.feedUrls && typeof parsed.feedUrls === "object"
-          ? parsed.feedUrls
-          : defaults.feedUrls,
-      updateState: defaults.updateState,
-      pendingVersion: null,
-      availableVersion: null,
-      downloadedBytes: null,
-      totalBytes: null,
-      releaseNotes: null,
-      publishedAt: null,
-    };
-  } catch {
-    return defaults;
-  }
+  return createDefaultUpdaterState();
 }
 
 function persistUpdaterState(updater: AppUpdateSnapshot) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(UPDATER_STORAGE_KEY, JSON.stringify(updater));
+  void setSetting("updater", updater).catch(() => {});
 }
 
 function getActiveWorkflowFromState(state: Pick<FlowState, "workflows" | "activeWorkflowId">) {
@@ -564,6 +509,21 @@ function normalizeAiParameters(
         ].filter(([, value]) => value !== ""),
       );
     }
+    case "action_terminal": {
+      return Object.fromEntries(
+        [
+          ["Shell", read("shell")],
+          ["Working Directory", read("working directory", "cwd", "directory")],
+          ["Session Key", read("session key", "session", "sessionkey")],
+          ["Command", read("command", "prompt", "instruction")],
+          ["Timeout Seconds", read("timeout seconds", "timeout", "timeoutseconds")],
+          ["Success Pattern Mode", read("success pattern mode", "pattern mode", "patternmode")],
+          ["Success Pattern", read("success pattern", "done pattern", "pattern")],
+          ["Reuse Session", read("reuse session", "reuse", "keepsession")],
+          ["Close Session After Run", read("close session after run", "close session", "autoclose")],
+        ].filter(([, value]) => value !== ""),
+      );
+    }
     case "monitor_alert": {
       return Object.fromEntries(
         [
@@ -658,6 +618,16 @@ function buildCatalogNode(
     chartType,
   });
 
+  const defaultParameters: Record<string, string> =
+    nodeType === "action_terminal"
+      ? {
+          Shell:
+            typeof navigator !== "undefined" && /windows/i.test(navigator.userAgent)
+              ? "cmd"
+              : "bash",
+        }
+      : {};
+
   return {
     id: uuidv4(),
     type: meta.shellType,
@@ -685,7 +655,7 @@ function buildCatalogNode(
           : undefined,
       programmable: overrides.programmable ?? getDefaultProgrammableConfig(nodeType),
       ...overrides,
-      parameters: { ...overrides.parameters },
+      parameters: { ...defaultParameters, ...overrides.parameters },
       config: { ...defaultConfig, ...overrides.config },
     },
   };
@@ -750,13 +720,13 @@ function createInitialFlowSnapshot() {
   const projects = createInitialProjects();
   const workflows = createInitialWorkflows();
   const chatState = getInitialChatState();
-  const runtimeStores = readPersistedRuntimeStores();
 
   return {
+    isHydrated: false,
     projects,
     workflows,
     executions: createInitialExecutions(workflows),
-    runtimeStores,
+    runtimeStores: {} as Record<string, ProjectRuntimeStore>,
     nodeRuntimeByWorkflow: {} as Record<string, Record<string, RuntimeNodeSnapshot>>,
     runtimeBaseUrl: null,
     activeProjectId: workflows[0]?.projectId ?? projects[0]?.id ?? "",
@@ -779,6 +749,94 @@ const initialFlowSnapshot = createInitialFlowSnapshot();
 
 export const useFlowStore = create<FlowState>((set, get) => ({
   ...initialFlowSnapshot,
+
+  hydrateFromStorage: async () => {
+    if (get().isHydrated) return;
+
+    const seedProjects = createInitialProjects();
+    const seedWorkflows = createInitialWorkflows();
+    await migrateFromLocalStorageIfNeeded(seedProjects, seedWorkflows);
+
+    const [
+      persistedProjects,
+      persistedWorkflows,
+      persistedRuntimeStores,
+      persistedThreads,
+      persistedActiveChatId,
+      persistedDeepseekKey,
+      persistedUpdater,
+    ] = await Promise.all([
+      getAllProjects(),
+      getAllWorkflows(),
+      readPersistedRuntimeStores(),
+      getAllThreads(),
+      getSetting("active-chat-id"),
+      getSetting("deepseek-key"),
+      getSetting("updater"),
+    ]);
+
+    const projects = persistedProjects.length ? persistedProjects : seedProjects;
+    const workflows = (persistedWorkflows.length ? persistedWorkflows : seedWorkflows).map(syncWorkflow);
+    const chatThreads = persistedThreads.length
+      ? persistedThreads.map((thread, index) => sanitizeChatThread(thread, index))
+      : createDefaultChatState().chatThreads;
+    const activeChatId =
+      persistedActiveChatId && chatThreads.some((thread) => thread.id === persistedActiveChatId)
+        ? persistedActiveChatId
+        : chatThreads[0]?.id ?? "";
+    const updaterDefaults = createDefaultUpdaterState();
+    const supportedChannels = normalizeReleaseChannels(
+      persistedUpdater?.supportedChannels,
+      updaterDefaults.supportedChannels,
+    );
+    const allowedChannels = normalizeReleaseChannels(
+      persistedUpdater?.allowedChannels,
+      updaterDefaults.allowedChannels,
+    );
+    const updater: AppUpdateSnapshot = persistedUpdater
+      ? {
+          ...updaterDefaults,
+          ...persistedUpdater,
+          supportedChannels,
+          allowedChannels,
+          releaseChannel: clampReleaseChannel(
+            persistedUpdater.releaseChannel,
+            allowedChannels,
+            supportedChannels,
+          ),
+          updateState: updaterDefaults.updateState,
+          pendingVersion: null,
+          availableVersion: null,
+          downloadedBytes: null,
+          totalBytes: null,
+          releaseNotes: null,
+          publishedAt: null,
+        }
+      : updaterDefaults;
+
+    set({
+      isHydrated: true,
+      projects,
+      workflows,
+      executions: createInitialExecutions(workflows),
+      runtimeStores: persistedRuntimeStores,
+      nodeRuntimeByWorkflow: {},
+      runtimeBaseUrl: null,
+      activeProjectId: workflows[0]?.projectId ?? projects[0]?.id ?? "",
+      activeWorkflowId: workflows[0]?.id ?? "",
+      selectedNodeId: null,
+      contextNodeIds: [],
+      isAddNodePanelOpen: false,
+      rightClickCtx: null,
+      activeTool: "select",
+      showSettings: false,
+      chatExpanded: false,
+      chatThreads,
+      activeChatId,
+      deepseekKey: persistedDeepseekKey ?? "",
+      updater,
+    });
+  },
 
   setRuntimeBaseUrl: (url) => set({ runtimeBaseUrl: url }),
 
@@ -834,9 +892,12 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     return project;
   },
 
-  deleteProject: (id) =>
+  deleteProject: (id) => {
+    let deleted = false;
+
     set((state) => {
       if (state.projects.length <= 1) return state;
+      deleted = true;
 
       const removedWorkflowIds = new Set(
         state.workflows
@@ -890,7 +951,14 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         isAddNodePanelOpen: false,
         rightClickCtx: null,
       };
-    }),
+    });
+
+    if (deleted) {
+      deleteProjectStore(id);
+      void dbDeleteProject(id).catch(() => {});
+      void deleteWorkflowsByProject(id).catch(() => {});
+    }
+  },
 
   toggleProjectActive: (id) =>
     set((state) => ({
@@ -987,9 +1055,12 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       return { workflows: [...state.workflows, syncWorkflow(copy)] };
     }),
 
-  deleteWorkflow: (id) =>
+  deleteWorkflow: (id) => {
+    let deleted = false;
+
     set((state) => {
       const remaining = state.workflows.filter((workflow) => workflow.id !== id);
+      deleted = remaining.length !== state.workflows.length;
       const nextNodeRuntimeByWorkflow = { ...state.nodeRuntimeByWorkflow };
       delete nextNodeRuntimeByWorkflow[id];
       return {
@@ -1004,7 +1075,12 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         selectedNodeId: null,
         contextNodeIds: [],
       };
-    }),
+    });
+
+    if (deleted) {
+      void dbDeleteWorkflow(id).catch(() => {});
+    }
+  },
 
   toggleWorkflowActive: (id) =>
     set((state) => ({
@@ -1024,13 +1100,22 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
   runWorkflow: async (request = {}) => {
     const state = get();
-    const workflow = syncWorkflow(getActiveWorkflowFromState(state));
-    const project = getActiveProjectFromState(state);
+    const requestedWorkflowId =
+      request.workflowId ??
+      (typeof request.payload?.workflowId === "string" ? request.payload.workflowId : null);
+    const rawWorkflow = requestedWorkflowId
+      ? state.workflows.find((item) => item.id === requestedWorkflowId)
+      : getActiveWorkflowFromState(state);
+    const workflow = rawWorkflow ? syncWorkflow(rawWorkflow) : null;
+    const project = workflow
+      ? state.projects.find((item) => item.id === workflow.projectId)
+      : getActiveProjectFromState(state);
     if (!workflow || !project?.active) return null;
 
     const executionId = uuidv4();
     const startedAt = Date.now();
     const executionRequest: WorkflowExecutionRequest = {
+      workflowId: workflow.id,
       source: request.source ?? "manual",
       triggerNodeId: request.triggerNodeId,
       payload: request.payload,
@@ -1161,6 +1246,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     }
 
     const result = await get().runWorkflow({
+      workflowId: delivery.workflowId,
       source: "webhook",
       triggerNodeId: delivery.nodeId,
       payload:
@@ -1250,6 +1336,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
   createChat: () => {
     const thread = createChatThread(get().chatThreads.length + 1);
+    void saveThread(thread).catch(() => {});
 
     set((state) => {
       const nextThreads = [...state.chatThreads, thread];
@@ -1268,9 +1355,11 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     set((state) => {
       const deletedIndex = state.chatThreads.findIndex((thread) => thread.id === id);
       if (deletedIndex === -1) return state;
+      void dbDeleteThread(id).catch(() => {});
 
       let nextThreads = state.chatThreads.filter((thread) => thread.id !== id);
       if (!nextThreads.length) {
+        void clearAllThreads().catch(() => {});
         nextThreads = [createChatThread(1)];
       }
 
@@ -1288,17 +1377,16 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     }),
 
   setDeepseekKey: (key) => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(DEEPSEEK_STORAGE_KEY, key);
-    }
+    void setSetting("deepseek-key", key).catch(() => {});
     set({ deepseekKey: key });
   },
 
-  resetLocalWorkspace: () => {
-    clearFlowMergeLocalStorage();
+  resetLocalWorkspace: async () => {
+    await clearFlowMergeStorage();
     const snapshot = createInitialFlowSnapshot();
     set({
       ...snapshot,
+      isHydrated: true,
     });
   },
 
@@ -1655,35 +1743,60 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
   updateNodeData: (id, data) =>
     set((state) => ({
-      workflows: updateWorkflowById(state.workflows, state.activeWorkflowId, (workflow) => ({
-        ...workflow,
-        nodes: workflow.nodes.map((node) =>
-          node.id === id ? { ...node, data: { ...node.data, ...data } } : node,
-        ),
-        updatedAt: nowIso(),
-      })),
+      workflows: updateWorkflowById(state.workflows, state.activeWorkflowId, (workflow) => {
+        let changed = false;
+        const nodes = workflow.nodes.map((node) => {
+          if (node.id !== id) return node;
+          const hasChanges = Object.entries(data).some(
+            ([key, value]) => node.data[key as keyof WorkflowNodeData] !== value,
+          );
+          if (!hasChanges) return node;
+          changed = true;
+          return { ...node, data: { ...node.data, ...data } };
+        });
+
+        return changed
+          ? {
+              ...workflow,
+              nodes,
+              updatedAt: nowIso(),
+            }
+          : workflow;
+      }),
     })),
 
   updateNodeConfig: (id, config) =>
     set((state) => ({
-      workflows: updateWorkflowById(state.workflows, state.activeWorkflowId, (workflow) => ({
-        ...workflow,
-        nodes: workflow.nodes.map((node) =>
-          node.id === id
-            ? {
-                ...node,
-                data: {
-                  ...node.data,
-                  config: {
-                    ...(node.data.config ?? {}),
-                    ...config,
-                  },
-                },
-              }
-            : node,
-        ),
-        updatedAt: nowIso(),
-      })),
+      workflows: updateWorkflowById(state.workflows, state.activeWorkflowId, (workflow) => {
+        let changed = false;
+        const nodes = workflow.nodes.map((node) => {
+          if (node.id !== id) return node;
+          const currentConfig = node.data.config ?? {};
+          const hasChanges = Object.entries(config).some(
+            ([key, value]) => currentConfig[key] !== value,
+          );
+          if (!hasChanges) return node;
+          changed = true;
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              config: {
+                ...currentConfig,
+                ...config,
+              },
+            },
+          };
+        });
+
+        return changed
+          ? {
+              ...workflow,
+              nodes,
+              updatedAt: nowIso(),
+            }
+          : workflow;
+      }),
     })),
 
   updateNodeParameters: (id, field, value) =>
@@ -1847,6 +1960,33 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       return { chatThreads: nextThreads };
     }),
 }));
+
+let persistProjectsTimer: ReturnType<typeof setTimeout> | null = null;
+let persistWorkflowsTimer: ReturnType<typeof setTimeout> | null = null;
+
+useFlowStore.subscribe((state, previousState) => {
+  if (!state.isHydrated) return;
+
+  if (state.projects !== previousState.projects) {
+    if (persistProjectsTimer) {
+      clearTimeout(persistProjectsTimer);
+    }
+
+    persistProjectsTimer = setTimeout(() => {
+      void saveAllProjects(state.projects).catch(() => {});
+    }, 400);
+  }
+
+  if (state.workflows !== previousState.workflows) {
+    if (persistWorkflowsTimer) {
+      clearTimeout(persistWorkflowsTimer);
+    }
+
+    persistWorkflowsTimer = setTimeout(() => {
+      void saveAllWorkflows(state.workflows).catch(() => {});
+    }, 400);
+  }
+});
 
 export function useActiveWorkflow() {
   return useFlowStore((state) => getActiveWorkflowFromState(state));

@@ -159,6 +159,38 @@ export function getNodeDocumentation(nodeType: NodeTypeId): NodeDocumentation {
         examples: ["variant -> Store A / Store B", "service -> monitor por microservico"],
         tips: ["Cases vazios nao devem seguir semanticos. Se um caso sumir, downstream precisa se adaptar."],
       });
+    case "action_terminal":
+      return buildActionDoc(nodeType, {
+        overview:
+          "Abre uma sessao real de terminal na maquina local do usuario e executa comandos no shell. E um node de poder maximo, pensado para automacoes locais, CLIs autonomos e playbooks que precisam agir fora do canvas.",
+        whenToUse: [
+          "Quando o workflow precisa chamar ferramentas locais como Codex CLI, Claude Code, Gemini CLI, git, bun, cargo ou scripts da propria maquina.",
+          "Quando um fluxo de observabilidade, incidentes ou release precisa investigar, corrigir e depois notificar o resultado.",
+        ],
+        avoidWhen: [
+          "Nao use na versao web. Este node depende do runtime desktop local.",
+          "Nao use quando uma integracao HTTP ou GitHub ja resolve o trabalho sem shell.",
+        ],
+        receives:
+          "Recebe o payload do fluxo e o interpola no comando usando expressoes como {{ input.first.message }}.",
+        emits:
+          "Emite sessionId, shell, workingDirectory, exitCode, output, successMatched, completionLine e completionPayload.",
+        topology: [
+          "monitor_error -> action_terminal -> action_slack",
+          "trigger_webhook -> enrich -> action_terminal -> analytics_store -> report",
+        ],
+        examples: [
+          "Receber um erro de checkout, chamar Claude Code e esperar 'Terminei ...' antes de avisar no Slack.",
+          "Executar bun test, cargo check ou um script local e mandar o resumo final por Telegram.",
+        ],
+        tips: [
+          "Pense neste node como acesso total ao sistema local. O comando precisa ser intencional.",
+          "Use Success Pattern = Terminei quando um CLI autonomo precisa devolver uma frase final para o restante do fluxo.",
+          "Reuse Session deixa o terminal persistente entre runs, o que ajuda agentes longos e investigacoes iterativas.",
+        ],
+        programming:
+          "Monte comandos com placeholders semanticos e deixe o shell voltar ao prompt naturalmente. O match de sucesso e opcional e deve servir para capturar linhas finais como 'Terminei {descricao}'.",
+      });
     case "analytics_store":
       return buildAnalyticsDoc(nodeType, {
         overview:

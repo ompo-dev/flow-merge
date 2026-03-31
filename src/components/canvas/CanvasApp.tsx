@@ -85,6 +85,31 @@ interface LandingFocusDetail {
   workflowId?: string;
 }
 
+function isInteractiveCanvasControl(target: HTMLElement | null) {
+  if (!target) return false;
+
+  return Boolean(
+    target.closest(
+      [
+        "[data-workspace-control='true']",
+        "[data-workspace-surface='true']",
+        "button",
+        "input",
+        "textarea",
+        "select",
+        "a[href]",
+        "[role='checkbox']",
+        "[role='menuitem']",
+        "[role='option']",
+        "[role='dialog']",
+        "[data-workspace-terminal='true']",
+        ".xterm-helper-textarea",
+        "iframe",
+      ].join(","),
+    ),
+  );
+}
+
 export interface CanvasAppProps {
   mode?: "app" | "landing";
   onAccessClick?: () => void;
@@ -505,6 +530,10 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
 
   const onNodeClick = useCallback(
     (event: React.MouseEvent, node: AppNode) => {
+      if (isInteractiveCanvasControl(event.target as HTMLElement | null)) {
+        return;
+      }
+
       if (activeTool === "eraser") {
         deleteNode(node.id);
         return;
@@ -725,6 +754,8 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
                 dragHandle:
                   node.type === "dashboardNode"
                     ? ".dashboard-node-drag-handle"
+                    : node.type === "actionNode" && node.data.nodeType === "action_terminal"
+                      ? ".terminal-node-drag-handle"
                     : node.dragHandle,
                 selected: true,
                 style: {
@@ -738,6 +769,8 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
                   dragHandle:
                     node.type === "dashboardNode"
                       ? ".dashboard-node-drag-handle"
+                      : node.type === "actionNode" && node.data.nodeType === "action_terminal"
+                        ? ".terminal-node-drag-handle"
                       : node.dragHandle,
                   selected: true,
                 }
@@ -746,6 +779,8 @@ function CanvasInner({ mode = "app", onAccessClick }: CanvasAppProps) {
                   dragHandle:
                     node.type === "dashboardNode"
                       ? ".dashboard-node-drag-handle"
+                      : node.type === "actionNode" && node.data.nodeType === "action_terminal"
+                        ? ".terminal-node-drag-handle"
                       : node.dragHandle,
                   selected: false,
                 },

@@ -6,6 +6,7 @@ import {
   seedClientState,
   seedWorkspaceArtifacts,
 } from "./helpers/license-fixtures";
+import { readFlowMergeDbSnapshot } from "./helpers/storage-fixtures";
 
 test("recovers the workspace after a blocked account gets paid", async ({ page }) => {
   let currentLicense = createLicensePayload({
@@ -58,17 +59,15 @@ test("wipes local workspace artifacts when the license payload requests deletion
   await expect(page.getByText("Conta removida")).toBeVisible();
   await expect(page.getByText("A grace terminou e os dados locais foram limpos.")).toBeVisible();
 
-  const storageSnapshot = await page.evaluate(() => ({
-    runtimeStore: window.localStorage.getItem("flow-merge-runtime-store"),
-    deepseekKey: window.localStorage.getItem("flow-merge-deepseek-key"),
-    chatThreads: window.localStorage.getItem("flow-merge-chat-threads"),
-    activeChatId: window.localStorage.getItem("flow-merge-active-chat-id"),
-    licenseCache: window.localStorage.getItem("flow-merge-license-cache"),
-  }));
-
-  expect(storageSnapshot.runtimeStore).toBeNull();
-  expect(storageSnapshot.deepseekKey).toBeNull();
-  expect(storageSnapshot.chatThreads).toBeNull();
-  expect(storageSnapshot.activeChatId).toBeNull();
-  expect(storageSnapshot.licenseCache).not.toBeNull();
+  const storageSnapshot = await readFlowMergeDbSnapshot(page);
+  expect(storageSnapshot.runtimeCollections).toEqual([]);
+  expect(storageSnapshot.chatThreads).toEqual([]);
+  expect(storageSnapshot.settings["deepseek-key"]).toBeUndefined();
+  expect(storageSnapshot.settings["active-chat-id"]).toBeUndefined();
+  expect(storageSnapshot.settings["license-cache"]).toEqual(
+    expect.objectContaining({
+      accessState: "deleted",
+      shouldWipeLocalData: true,
+    }),
+  );
 });

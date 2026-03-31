@@ -7,6 +7,9 @@ const {
   apiPostMock,
   signInSocialMock,
   signOutMock,
+  getSettingMock,
+  setSettingMock,
+  deleteSettingMock,
   resetLocalWorkspaceMock,
   syncUpdaterAccessMock,
 } = vi.hoisted(() => ({
@@ -14,6 +17,9 @@ const {
   apiPostMock: vi.fn(),
   signInSocialMock: vi.fn(),
   signOutMock: vi.fn(),
+  getSettingMock: vi.fn(),
+  setSettingMock: vi.fn(),
+  deleteSettingMock: vi.fn(),
   resetLocalWorkspaceMock: vi.fn(),
   syncUpdaterAccessMock: vi.fn(),
 }));
@@ -32,6 +38,12 @@ vi.mock("@/lib/auth-client", () => ({
     },
     signOut: signOutMock,
   },
+}));
+
+vi.mock("@/lib/storage/settings-store", () => ({
+  getSetting: getSettingMock,
+  setSetting: setSettingMock,
+  deleteSetting: deleteSettingMock,
 }));
 
 vi.mock("@/store/useFlowStore", () => ({
@@ -108,6 +120,14 @@ async function loadStore(storageSeed: Record<string, string> = {}) {
   vi.resetModules();
   const localStorage = createStorageMock(storageSeed);
   const location = { href: "http://localhost:3000/" };
+  getSettingMock.mockImplementation(async (key: string) => {
+    if (key === "last-user-id") {
+      return storageSeed["flow-merge-last-user-id"] ?? null;
+    }
+    return null;
+  });
+  setSettingMock.mockResolvedValue(undefined);
+  deleteSettingMock.mockResolvedValue(undefined);
 
   vi.stubGlobal("window", {
     localStorage,
@@ -135,7 +155,7 @@ describe("useAuthStore", () => {
   it("refreshStatus aplica o payload, sincroniza canais e persiste a licenca", async () => {
     const payload = createLicensePayload();
     apiGetMock.mockResolvedValue({ data: payload });
-    const { useAuthStore, localStorage } = await loadStore();
+    const { useAuthStore } = await loadStore();
 
     const result = await useAuthStore.getState().refreshStatus();
 
@@ -143,14 +163,8 @@ describe("useAuthStore", () => {
     expect(syncUpdaterAccessMock).toHaveBeenCalledWith(["stable", "beta"]);
     expect(resetLocalWorkspaceMock).not.toHaveBeenCalled();
     expect(useAuthStore.getState().session?.id).toBe("user_1");
-    expect(localStorage.setItem).toHaveBeenCalledWith(
-      "flow-merge-license-cache",
-      JSON.stringify(payload),
-    );
-    expect(localStorage.setItem).toHaveBeenCalledWith(
-      "flow-merge-last-user-id",
-      "user_1",
-    );
+    expect(setSettingMock).toHaveBeenCalledWith("license-cache", payload);
+    expect(setSettingMock).toHaveBeenCalledWith("last-user-id", "user_1");
   });
 
   it("faz wipe local quando o backend manda shouldWipeLocalData", async () => {
@@ -203,7 +217,7 @@ describe("useAuthStore", () => {
       },
     );
     apiGetMock.mockRejectedValue(unauthorizedError);
-    const { useAuthStore, localStorage } = await loadStore({
+    const { useAuthStore } = await loadStore({
       "flow-merge-license-cache": JSON.stringify(createLicensePayload()),
     });
 
@@ -212,7 +226,7 @@ describe("useAuthStore", () => {
     expect(result.authenticated).toBe(false);
     expect(useAuthStore.getState().session).toBeNull();
     expect(syncUpdaterAccessMock).toHaveBeenCalledWith(["stable"]);
-    expect(localStorage.removeItem).toHaveBeenCalledWith("flow-merge-license-cache");
+    expect(deleteSettingMock).toHaveBeenCalledWith("license-cache");
   });
 
   it("inicia o login Google e redireciona quando recebe a URL do Better Auth", async () => {
@@ -253,7 +267,7 @@ describe("useAuthStore", () => {
   it("faz logout, limpa a sessao cliente e ressincroniza os canais", async () => {
     signOutMock.mockResolvedValue({ success: true });
     const payload = createLicensePayload();
-    const { useAuthStore, localStorage } = await loadStore({
+    const { useAuthStore } = await loadStore({
       "flow-merge-license-cache": JSON.stringify(payload),
       "flow-merge-last-user-id": "user_1",
     });
@@ -270,6 +284,6 @@ describe("useAuthStore", () => {
     expect(useAuthStore.getState().session).toBeNull();
     expect(useAuthStore.getState().license.authenticated).toBe(false);
     expect(syncUpdaterAccessMock).toHaveBeenCalledWith(["stable"]);
-    expect(localStorage.removeItem).toHaveBeenCalledWith("flow-merge-license-cache");
+    expect(deleteSettingMock).toHaveBeenCalledWith("license-cache");
   });
 });

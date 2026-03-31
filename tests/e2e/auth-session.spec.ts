@@ -5,6 +5,7 @@ import {
   seedClientState,
   seedWorkspaceArtifacts,
 } from "./helpers/license-fixtures";
+import { readFlowMergeDbSnapshot } from "./helpers/storage-fixtures";
 
 test("starts the Google login flow from the landing access node", async ({ page }) => {
   const anonymousLicense = createLicensePayload({
@@ -67,13 +68,9 @@ test("signs out from the account modal and returns to the landing surface", asyn
   ).toBeVisible();
   await expect(page.getByTestId("toolbar-settings-button")).toHaveCount(0);
 
-  const storageSnapshot = await page.evaluate(() => ({
-    licenseCache: window.localStorage.getItem("flow-merge-license-cache"),
-    lastUserId: window.localStorage.getItem("flow-merge-last-user-id"),
-  }));
-
-  expect(storageSnapshot.licenseCache).toBeNull();
-  expect(storageSnapshot.lastUserId).toBe(activeLicense.user?.id ?? null);
+  const storageSnapshot = await readFlowMergeDbSnapshot(page);
+  expect(storageSnapshot.settings["license-cache"]).toBeUndefined();
+  expect(storageSnapshot.settings["last-user-id"]).toBe(activeLicense.user?.id ?? null);
 });
 
 test("wipes local workspace when the authenticated user changes across refresh", async ({
@@ -108,19 +105,15 @@ test("wipes local workspace when the authenticated user changes across refresh",
 
   await expect(page.getByTestId("toolbar-settings-button")).toBeVisible();
 
-  const storageSnapshot = await page.evaluate(() => ({
-    runtimeStore: window.localStorage.getItem("flow-merge-runtime-store"),
-    deepseekKey: window.localStorage.getItem("flow-merge-deepseek-key"),
-    chatThreads: window.localStorage.getItem("flow-merge-chat-threads"),
-    activeChatId: window.localStorage.getItem("flow-merge-active-chat-id"),
-    licenseCache: window.localStorage.getItem("flow-merge-license-cache"),
-    lastUserId: window.localStorage.getItem("flow-merge-last-user-id"),
-  }));
-
-  expect(storageSnapshot.runtimeStore).toBeNull();
-  expect(storageSnapshot.deepseekKey).toBeNull();
-  expect(storageSnapshot.chatThreads).toBeNull();
-  expect(storageSnapshot.activeChatId).toBeNull();
-  expect(storageSnapshot.licenseCache).not.toBeNull();
-  expect(storageSnapshot.lastUserId).toBe("user_e2e_2");
+  const storageSnapshot = await readFlowMergeDbSnapshot(page);
+  expect(storageSnapshot.runtimeCollections).toEqual([]);
+  expect(storageSnapshot.chatThreads).toEqual([]);
+  expect(storageSnapshot.settings["deepseek-key"]).toBeUndefined();
+  expect(storageSnapshot.settings["active-chat-id"]).toBeUndefined();
+  expect(storageSnapshot.settings["license-cache"]).toEqual(
+    expect.objectContaining({
+      user: expect.objectContaining({ id: "user_e2e_2" }),
+    }),
+  );
+  expect(storageSnapshot.settings["last-user-id"]).toBe("user_e2e_2");
 });

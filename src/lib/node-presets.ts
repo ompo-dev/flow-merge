@@ -209,6 +209,40 @@ const nodePresets: Partial<Record<NodeTypeId, NodePreset[]>> = {
       },
     },
   ],
+  action_terminal: [
+    {
+      id: "terminal-bugfix-agent",
+      title: "Agente CLI para corrigir bug",
+      description:
+        "Dispara um agente local como Claude Code, Codex CLI ou Gemini CLI e espera uma linha final com 'Terminei'.",
+      recommended: true,
+      parameters: {
+         Shell: "cmd",
+        "Session Key": "bug-fixer",
+        "Timeout Seconds": "1800",
+        "Success Pattern Mode": "contains",
+        "Success Pattern": "Terminei",
+        "Reuse Session": "Yes",
+        "Close Session After Run": "No",
+        Command:
+          "claude-code \"investigue {{ input.first.message }} e quando terminar diga Terminei {descricao do problema}\"",
+      },
+    },
+    {
+      id: "terminal-local-script",
+      title: "Rodar script local",
+      description:
+        "Executa um comando local e segue o fluxo quando o shell voltar ao prompt.",
+      parameters: {
+         Shell: "cmd",
+        "Timeout Seconds": "600",
+        "Success Pattern Mode": "none",
+        "Reuse Session": "Yes",
+        "Close Session After Run": "No",
+        Command: "bun run lint",
+      },
+    },
+  ],
   monitor_alert: [
     {
       id: "alert-slack",

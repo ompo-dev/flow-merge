@@ -9,10 +9,8 @@ import {
   type LicenseStatusPayload,
   type PlanType,
 } from "@/lib/license";
+import { deleteSetting, getSetting, setSetting } from "@/lib/storage/settings-store";
 import { useFlowStore } from "@/store/useFlowStore";
-
-const LICENSE_CACHE_STORAGE_KEY = "flow-merge-license-cache";
-const LAST_AUTH_USER_STORAGE_KEY = "flow-merge-last-user-id";
 
 interface AuthResult {
   success: boolean;
@@ -66,39 +64,33 @@ function createAnonymousLicenseState(): LicenseStatusPayload {
 }
 
 function readCachedLicenseState() {
-  if (typeof window === "undefined") return createAnonymousLicenseState();
-
-  try {
-    const raw = window.localStorage.getItem(LICENSE_CACHE_STORAGE_KEY);
-    if (!raw) return createAnonymousLicenseState();
-    return JSON.parse(raw) as LicenseStatusPayload;
-  } catch {
-    return createAnonymousLicenseState();
-  }
+  return createAnonymousLicenseState();
 }
 
 function persistLicenseState(payload: LicenseStatusPayload) {
   if (typeof window === "undefined") return;
 
-  window.localStorage.setItem(LICENSE_CACHE_STORAGE_KEY, JSON.stringify(payload));
+  void setSetting("license-cache", payload).catch(() => {});
 
   if (payload.user?.id) {
-    window.localStorage.setItem(LAST_AUTH_USER_STORAGE_KEY, payload.user.id);
+    void setSetting("last-user-id", payload.user.id).catch(() => {});
     return;
   }
 
   if (!payload.authenticated) {
-    window.localStorage.removeItem(LICENSE_CACHE_STORAGE_KEY);
+    void deleteSetting("license-cache").catch(() => {});
   }
 }
 
-function getLastAuthenticatedUserId() {
+async function getLastAuthenticatedUserId() {
+  const persisted = await getSetting("last-user-id");
+  if (persisted) return persisted;
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(LAST_AUTH_USER_STORAGE_KEY);
+  return window.localStorage.getItem("flow-merge-last-user-id");
 }
 
-function wipeLocalWorkspace() {
-  useFlowStore.getState().resetLocalWorkspace();
+async function wipeLocalWorkspace() {
+  await useFlowStore.getState().resetLocalWorkspace();
 }
 
 function normalizeLicensePayload(payload: LicenseStatusPayload) {
@@ -130,13 +122,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const response = await apiClient.get<LicenseStatusPayload>("/api/license/status");
       const payload = normalizeLicensePayload(response.data);
-      const previousUserId = getLastAuthenticatedUserId();
+      const previousUserId = await getLastAuthenticatedUserId();
       const nextUserId = payload.user?.id ?? null;
 
       if (payload.shouldWipeLocalData) {
-        wipeLocalWorkspace();
+        await wipeLocalWorkspace();
       } else if (previousUserId && nextUserId && previousUserId !== nextUserId) {
-        wipeLocalWorkspace();
+        await wipeLocalWorkspace();
       }
 
       useFlowStore.getState().syncUpdaterAccess(payload.releaseAccess.allowedChannels);

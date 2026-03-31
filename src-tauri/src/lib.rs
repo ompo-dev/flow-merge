@@ -1,9 +1,16 @@
-use std::{collections::HashMap, str::FromStr, sync::Arc};
+use std::{collections::HashMap, convert::Infallible, str::FromStr, sync::Arc};
 
+mod terminal;
+
+use async_stream::stream;
 use axum::{
   body::{Body, Bytes},
-  extract::State as AxumState,
+  extract::{Path, State as AxumState},
   http::{HeaderMap, Method, Response, StatusCode, Uri},
+  response::{
+    sse::{Event, KeepAlive, Sse},
+    IntoResponse,
+  },
   routing::{any, post},
   Router,
 };
@@ -24,6 +31,7 @@ const MCP_REQUEST_EVENT_NAME: &str = "mcp://request";
 const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
 const MCP_FALLBACK_PROTOCOL_VERSION: &str = "2025-03-26";
 const MCP_DEFAULT_SERVER_NAME: &str = "flow-merge-local";
+const TERMINAL_BRIDGE_ENDPOINT_PATH: &str = "/terminal";
 const UPDATER_EVENT_NAME: &str = "updater://state";
 const UPDATER_CHECK_INTERVAL_MS: u64 = 6 * 60 * 60 * 1000;
 const DEV_UPDATER_PUBLIC_KEY: &str = include_str!("../updater.dev.pubkey");
@@ -82,6 +90,7 @@ struct HttpRuntimeState {
   app_handle: AppHandle,
   shared: RuntimeServerState,
   mcp: McpServerState,
+  terminal_bridge: TerminalBridgeState,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -135,6 +144,38 @@ pub struct McpBridgeResponse {
 struct McpServerState {
   config: Arc<Mutex<McpRuntimeConfig>>,
   pending: Arc<Mutex<HashMap<String, oneshot::Sender<McpBridgeResponse>>>>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalBridgeRuntimeConfig {
+  pub enabled: bool,
+  pub auth_token: String,
+}
+
+impl Default for TerminalBridgeRuntimeConfig {
+  fn default() -> Self {
+    Self {
+      enabled: false,
+      auth_token: String::new(),
+    }
+  }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalBridgeRuntimeStatus {
+  pub available: bool,
+  pub running: bool,
+  pub port: u16,
+  pub base_url: String,
+  pub endpoint_url: String,
+  pub enabled: bool,
+}
+
+#[derive(Clone)]
+struct TerminalBridgeState {
+  config: Arc<Mutex<TerminalBridgeRuntimeConfig>>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -377,6 +418,10 @@ fn local_mcp_url(port: u16) -> String {
   format!("{}/mcp", local_base_url(port))
 }
 
+fn local_terminal_bridge_url(port: u16) -> String {
+  format!("{}{TERMINAL_BRIDGE_ENDPOINT_PATH}", local_base_url(port))
+}
+
 fn is_allowed_local_host(host: &str) -> bool {
   let without_port = host.split(':').next().unwrap_or_default().trim();
   matches!(without_port, "127.0.0.1" | "localhost")
@@ -449,6 +494,90 @@ fn extract_mcp_token(uri: &Uri, headers: &HeaderMap) -> Option<String> {
     .map(str::to_string)
 }
 
+fn extract_terminal_bridge_token(uri: &Uri, headers: &HeaderMap) -> Option<String> {
+  if let Some(query) = parse_query(uri) {
+    if let Some(token) = query.get("token") {
+      let trimmed = token.trim();
+      if !trimmed.is_empty() {
+        return Some(trimmed.to_string());
+      }
+    }
+  }
+
+  if let Some(value) = headers.get("x-flow-merge-terminal-token") {
+    if let Ok(token) = value.to_str() {
+      let trimmed = token.trim();
+      if !trimmed.is_empty() {
+        return Some(trimmed.to_string());
+      }
+    }
+  }
+
+  headers
+    .get("authorization")
+    .and_then(|value| value.to_str().ok())
+    .map(|value| value.trim())
+    .and_then(|value| value.strip_prefix("Bearer "))
+    .map(str::trim)
+    .filter(|value| !value.is_empty())
+    .map(str::to_string)
+}
+
+fn apply_terminal_bridge_cors_headers(response: &mut Response<Body>) {
+  let headers = response.headers_mut();
+  headers.insert(
+    "access-control-allow-origin",
+    axum::http::HeaderValue::from_static("*"),
+  );
+  headers.insert(
+    "access-control-allow-methods",
+    axum::http::HeaderValue::from_static("GET,POST,DELETE,OPTIONS"),
+  );
+  headers.insert(
+    "access-control-allow-headers",
+    axum::http::HeaderValue::from_static(
+      "authorization,content-type,x-flow-merge-terminal-token",
+    ),
+  );
+  headers.insert(
+    "cache-control",
+    axum::http::HeaderValue::from_static("no-store"),
+  );
+}
+
+fn terminal_bridge_empty_response(status: StatusCode) -> Response<Body> {
+  let mut response = Response::builder()
+    .status(status)
+    .body(Body::empty())
+    .unwrap_or_else(|_| Response::new(Body::empty()));
+  apply_terminal_bridge_cors_headers(&mut response);
+  response
+}
+
+fn terminal_bridge_json_response(status: StatusCode, payload: Value) -> Response<Body> {
+  let mut response = Response::builder()
+    .status(status)
+    .header("content-type", "application/json")
+    .body(Body::from(payload.to_string()))
+    .unwrap_or_else(|_| Response::new(Body::from(payload.to_string())));
+  apply_terminal_bridge_cors_headers(&mut response);
+  response
+}
+
+fn terminal_bridge_error_response(
+  status: StatusCode,
+  error_code: &str,
+  message: &str,
+) -> Response<Body> {
+  terminal_bridge_json_response(
+    status,
+    json!({
+      "error": error_code,
+      "message": message,
+    }),
+  )
+}
+
 async fn mcp_runtime_status_payload(
   runtime: &RuntimeServerState,
   mcp: &McpServerState,
@@ -464,6 +593,23 @@ async fn mcp_runtime_status_payload(
     endpoint_url: local_mcp_url(runtime.port),
     enabled: config.enabled,
     server_name: config.server_name,
+  }
+}
+
+async fn terminal_bridge_runtime_status_payload(
+  runtime: &RuntimeServerState,
+  terminal_bridge: &TerminalBridgeState,
+) -> TerminalBridgeRuntimeStatus {
+  let running = *runtime.running.lock().await;
+  let config = terminal_bridge.config.lock().await.clone();
+
+  TerminalBridgeRuntimeStatus {
+    available: true,
+    running,
+    port: runtime.port,
+    base_url: local_base_url(runtime.port),
+    endpoint_url: local_terminal_bridge_url(runtime.port),
+    enabled: config.enabled,
   }
 }
 
@@ -544,6 +690,51 @@ async fn validate_mcp_http_request(
       "Flow Merge local runtime is not running",
       None,
       StatusCode::SERVICE_UNAVAILABLE,
+    ));
+  }
+
+  None
+}
+
+async fn validate_terminal_bridge_http_request(
+  uri: &Uri,
+  headers: &HeaderMap,
+  runtime: &RuntimeServerState,
+  terminal_bridge: &TerminalBridgeState,
+) -> Option<Response<Body>> {
+  if let Some(host) = headers.get("host").and_then(|value| value.to_str().ok()) {
+    if !is_allowed_local_host(host) {
+      return Some(terminal_bridge_error_response(
+        StatusCode::FORBIDDEN,
+        "forbidden_host",
+        "Forbidden host",
+      ));
+    }
+  }
+
+  let config = terminal_bridge.config.lock().await.clone();
+  if !config.enabled {
+    return Some(terminal_bridge_error_response(
+      StatusCode::SERVICE_UNAVAILABLE,
+      "terminal_bridge_disabled",
+      "Flow Merge terminal bridge is disabled",
+    ));
+  }
+
+  let token = extract_terminal_bridge_token(uri, headers);
+  if token.as_deref() != Some(config.auth_token.as_str()) {
+    return Some(terminal_bridge_error_response(
+      StatusCode::UNAUTHORIZED,
+      "invalid_terminal_bridge_token",
+      "Invalid terminal bridge token",
+    ));
+  }
+
+  if !*runtime.running.lock().await {
+    return Some(terminal_bridge_error_response(
+      StatusCode::SERVICE_UNAVAILABLE,
+      "runtime_unavailable",
+      "Flow Merge local runtime is not running",
     ));
   }
 
@@ -1024,6 +1215,431 @@ async fn dispatch_mcp_bridge_request(
   }
 }
 
+fn parse_terminal_bridge_request_body<T: for<'de> Deserialize<'de>>(
+  body: &Bytes,
+) -> Result<T, Response<Body>> {
+  serde_json::from_slice(body).map_err(|error| {
+    terminal_bridge_error_response(
+      StatusCode::BAD_REQUEST,
+      "invalid_terminal_payload",
+      &format!("Invalid terminal payload: {error}"),
+    )
+  })
+}
+
+fn terminal_query_value(uri: &Uri, key: &str) -> Option<String> {
+  parse_query(uri).and_then(|query| query.get(key).cloned())
+}
+
+fn terminal_required_query_value(uri: &Uri, key: &str) -> Result<String, Response<Body>> {
+  terminal_query_value(uri, key).ok_or_else(|| {
+    terminal_bridge_error_response(
+      StatusCode::BAD_REQUEST,
+      "missing_query_param",
+      &format!("Missing query param: {key}"),
+    )
+  })
+}
+
+async fn handle_terminal_bridge_status(
+  AxumState(state): AxumState<HttpRuntimeState>,
+  method: Method,
+) -> Response<Body> {
+  if method == Method::OPTIONS {
+    return terminal_bridge_empty_response(StatusCode::NO_CONTENT);
+  }
+
+  if method != Method::GET {
+    return terminal_bridge_error_response(
+      StatusCode::METHOD_NOT_ALLOWED,
+      "method_not_allowed",
+      "Use GET for terminal bridge status.",
+    );
+  }
+
+  terminal_bridge_json_response(
+    StatusCode::OK,
+    serde_json::to_value(
+      terminal_bridge_runtime_status_payload(&state.shared, &state.terminal_bridge).await,
+    )
+    .unwrap_or_else(|_| json!({ "available": false })),
+  )
+}
+
+async fn handle_terminal_bridge_sessions(
+  AxumState(state): AxumState<HttpRuntimeState>,
+  method: Method,
+  uri: Uri,
+  headers: HeaderMap,
+  body: Bytes,
+) -> Response<Body> {
+  if method == Method::OPTIONS {
+    return terminal_bridge_empty_response(StatusCode::NO_CONTENT);
+  }
+
+  if let Some(response) = validate_terminal_bridge_http_request(
+    &uri,
+    &headers,
+    &state.shared,
+    &state.terminal_bridge,
+  )
+  .await
+  {
+    return response;
+  }
+
+  match method {
+    Method::GET => {
+      let project_id = terminal_query_value(&uri, "projectId");
+      match terminal::terminal_list_sessions_internal(
+        project_id,
+        state.app_handle.state::<terminal::TerminalRuntimeState>().inner(),
+      ) {
+        Ok(sessions) => terminal_bridge_json_response(
+          StatusCode::OK,
+          serde_json::to_value(sessions).unwrap_or_else(|_| json!([])),
+        ),
+        Err(error) => terminal_bridge_error_response(
+          StatusCode::INTERNAL_SERVER_ERROR,
+          "terminal_list_failed",
+          &error,
+        ),
+      }
+    }
+    Method::POST => {
+      let input = match parse_terminal_bridge_request_body::<terminal::TerminalOpenSessionInput>(&body) {
+        Ok(input) => input,
+        Err(response) => return response,
+      };
+
+      match terminal::terminal_open_session_internal(
+        input,
+        &state.app_handle,
+        state.app_handle.state::<terminal::TerminalRuntimeState>().inner(),
+      ) {
+        Ok(snapshot) => terminal_bridge_json_response(
+          StatusCode::OK,
+          serde_json::to_value(snapshot).unwrap_or_else(|_| json!({})),
+        ),
+        Err(error) => terminal_bridge_error_response(
+          StatusCode::BAD_REQUEST,
+          "terminal_open_failed",
+          &error,
+        ),
+      }
+    }
+    _ => terminal_bridge_error_response(
+      StatusCode::METHOD_NOT_ALLOWED,
+      "method_not_allowed",
+      "Use GET or POST on /terminal/sessions.",
+    ),
+  }
+}
+
+async fn handle_terminal_bridge_session(
+  AxumState(state): AxumState<HttpRuntimeState>,
+  Path(session_id): Path<String>,
+  method: Method,
+  uri: Uri,
+  headers: HeaderMap,
+) -> Response<Body> {
+  if method == Method::OPTIONS {
+    return terminal_bridge_empty_response(StatusCode::NO_CONTENT);
+  }
+
+  if let Some(response) = validate_terminal_bridge_http_request(
+    &uri,
+    &headers,
+    &state.shared,
+    &state.terminal_bridge,
+  )
+  .await
+  {
+    return response;
+  }
+
+  let project_id = match terminal_required_query_value(&uri, "projectId") {
+    Ok(project_id) => project_id,
+    Err(response) => return response,
+  };
+  let input = terminal::TerminalAttachSessionInput {
+    project_id,
+    session_id,
+  };
+
+  match method {
+    Method::GET => match terminal::terminal_attach_session_internal(
+      input,
+      state.app_handle.state::<terminal::TerminalRuntimeState>().inner(),
+    ) {
+      Ok(snapshot) => terminal_bridge_json_response(
+        StatusCode::OK,
+        serde_json::to_value(snapshot).unwrap_or_else(|_| json!({})),
+      ),
+      Err(error) => terminal_bridge_error_response(
+        StatusCode::NOT_FOUND,
+        "terminal_session_not_found",
+        &error,
+      ),
+    },
+    Method::DELETE => match terminal::terminal_close_session_internal(
+      input,
+      state.app_handle.state::<terminal::TerminalRuntimeState>().inner(),
+    ) {
+      Ok(snapshot) => terminal_bridge_json_response(
+        StatusCode::OK,
+        serde_json::to_value(snapshot).unwrap_or_else(|_| json!({})),
+      ),
+      Err(error) => terminal_bridge_error_response(
+        StatusCode::BAD_REQUEST,
+        "terminal_close_failed",
+        &error,
+      ),
+    },
+    _ => terminal_bridge_error_response(
+      StatusCode::METHOD_NOT_ALLOWED,
+      "method_not_allowed",
+      "Use GET or DELETE on /terminal/sessions/{sessionId}.",
+    ),
+  }
+}
+
+async fn handle_terminal_bridge_input(
+  AxumState(state): AxumState<HttpRuntimeState>,
+  Path(session_id): Path<String>,
+  method: Method,
+  uri: Uri,
+  headers: HeaderMap,
+  body: Bytes,
+) -> Response<Body> {
+  if method == Method::OPTIONS {
+    return terminal_bridge_empty_response(StatusCode::NO_CONTENT);
+  }
+
+  if method != Method::POST {
+    return terminal_bridge_error_response(
+      StatusCode::METHOD_NOT_ALLOWED,
+      "method_not_allowed",
+      "Use POST on /terminal/sessions/{sessionId}/input.",
+    );
+  }
+
+  if let Some(response) = validate_terminal_bridge_http_request(
+    &uri,
+    &headers,
+    &state.shared,
+    &state.terminal_bridge,
+  )
+  .await
+  {
+    return response;
+  }
+
+  let mut input = match parse_terminal_bridge_request_body::<terminal::TerminalWriteInput>(&body) {
+    Ok(input) => input,
+    Err(response) => return response,
+  };
+  input.session_id = session_id;
+
+  match terminal::terminal_write_input_internal(
+    input,
+    state.app_handle.state::<terminal::TerminalRuntimeState>().inner(),
+  ) {
+    Ok(snapshot) => terminal_bridge_json_response(
+      StatusCode::OK,
+      serde_json::to_value(snapshot).unwrap_or_else(|_| json!({})),
+    ),
+    Err(error) => terminal_bridge_error_response(
+      StatusCode::BAD_REQUEST,
+      "terminal_input_failed",
+      &error,
+    ),
+  }
+}
+
+async fn handle_terminal_bridge_resize(
+  AxumState(state): AxumState<HttpRuntimeState>,
+  Path(session_id): Path<String>,
+  method: Method,
+  uri: Uri,
+  headers: HeaderMap,
+  body: Bytes,
+) -> Response<Body> {
+  if method == Method::OPTIONS {
+    return terminal_bridge_empty_response(StatusCode::NO_CONTENT);
+  }
+
+  if method != Method::POST {
+    return terminal_bridge_error_response(
+      StatusCode::METHOD_NOT_ALLOWED,
+      "method_not_allowed",
+      "Use POST on /terminal/sessions/{sessionId}/resize.",
+    );
+  }
+
+  if let Some(response) = validate_terminal_bridge_http_request(
+    &uri,
+    &headers,
+    &state.shared,
+    &state.terminal_bridge,
+  )
+  .await
+  {
+    return response;
+  }
+
+  let mut input = match parse_terminal_bridge_request_body::<terminal::TerminalResizeInput>(&body) {
+    Ok(input) => input,
+    Err(response) => return response,
+  };
+  input.session_id = session_id;
+
+  match terminal::terminal_resize_session_internal(
+    input,
+    state.app_handle.state::<terminal::TerminalRuntimeState>().inner(),
+  ) {
+    Ok(snapshot) => terminal_bridge_json_response(
+      StatusCode::OK,
+      serde_json::to_value(snapshot).unwrap_or_else(|_| json!({})),
+    ),
+    Err(error) => terminal_bridge_error_response(
+      StatusCode::BAD_REQUEST,
+      "terminal_resize_failed",
+      &error,
+    ),
+  }
+}
+
+async fn handle_terminal_bridge_signal(
+  AxumState(state): AxumState<HttpRuntimeState>,
+  Path(session_id): Path<String>,
+  method: Method,
+  uri: Uri,
+  headers: HeaderMap,
+  body: Bytes,
+) -> Response<Body> {
+  if method == Method::OPTIONS {
+    return terminal_bridge_empty_response(StatusCode::NO_CONTENT);
+  }
+
+  if method != Method::POST {
+    return terminal_bridge_error_response(
+      StatusCode::METHOD_NOT_ALLOWED,
+      "method_not_allowed",
+      "Use POST on /terminal/sessions/{sessionId}/signal.",
+    );
+  }
+
+  if let Some(response) = validate_terminal_bridge_http_request(
+    &uri,
+    &headers,
+    &state.shared,
+    &state.terminal_bridge,
+  )
+  .await
+  {
+    return response;
+  }
+
+  let mut input = match parse_terminal_bridge_request_body::<terminal::TerminalSignalInput>(&body) {
+    Ok(input) => input,
+    Err(response) => return response,
+  };
+  input.session_id = session_id;
+
+  match terminal::terminal_send_signal_internal(
+    input,
+    state.app_handle.state::<terminal::TerminalRuntimeState>().inner(),
+  ) {
+    Ok(snapshot) => terminal_bridge_json_response(
+      StatusCode::OK,
+      serde_json::to_value(snapshot).unwrap_or_else(|_| json!({})),
+    ),
+    Err(error) => terminal_bridge_error_response(
+      StatusCode::BAD_REQUEST,
+      "terminal_signal_failed",
+      &error,
+    ),
+  }
+}
+
+async fn handle_terminal_bridge_stream(
+  AxumState(state): AxumState<HttpRuntimeState>,
+  Path(session_id): Path<String>,
+  method: Method,
+  uri: Uri,
+  headers: HeaderMap,
+) -> Response<Body> {
+  if method == Method::OPTIONS {
+    return terminal_bridge_empty_response(StatusCode::NO_CONTENT);
+  }
+
+  if method != Method::GET {
+    return terminal_bridge_error_response(
+      StatusCode::METHOD_NOT_ALLOWED,
+      "method_not_allowed",
+      "Use GET on /terminal/sessions/{sessionId}/stream.",
+    );
+  }
+
+  if let Some(response) = validate_terminal_bridge_http_request(
+    &uri,
+    &headers,
+    &state.shared,
+    &state.terminal_bridge,
+  )
+  .await
+  {
+    return response;
+  }
+
+  let project_id = match terminal_required_query_value(&uri, "projectId") {
+    Ok(project_id) => project_id,
+    Err(response) => return response,
+  };
+
+  let (snapshot, mut receiver) = match terminal::terminal_subscribe_session(
+    &project_id,
+    &session_id,
+    state.app_handle.state::<terminal::TerminalRuntimeState>().inner(),
+  ) {
+    Ok(result) => result,
+    Err(error) => {
+      return terminal_bridge_error_response(
+        StatusCode::NOT_FOUND,
+        "terminal_stream_not_found",
+        &error,
+      );
+    }
+  };
+
+  let event_stream = stream! {
+    if let Ok(event) = Event::default().event("snapshot").json_data(snapshot) {
+      yield Ok::<Event, Infallible>(event);
+    }
+
+    loop {
+      match receiver.recv().await {
+        Ok(output_event) => {
+          if let Ok(event) = Event::default()
+            .event(output_event.channel.as_str())
+            .json_data(output_event)
+          {
+            yield Ok::<Event, Infallible>(event);
+          }
+        }
+        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+      }
+    }
+  };
+
+  let sse = Sse::new(event_stream).keep_alive(KeepAlive::default());
+  let mut response = sse.into_response();
+  apply_terminal_bridge_cors_headers(&mut response);
+  response
+}
+
 async fn handle_runtime_webhook(
   AxumState(state): AxumState<HttpRuntimeState>,
   method: Method,
@@ -1496,6 +2112,32 @@ async fn mcp_configure(
 }
 
 #[tauri::command]
+async fn terminal_bridge_status(
+  runtime: TauriState<'_, RuntimeServerState>,
+  terminal_bridge: TauriState<'_, TerminalBridgeState>,
+) -> Result<TerminalBridgeRuntimeStatus, String> {
+  Ok(terminal_bridge_runtime_status_payload(&runtime, &terminal_bridge).await)
+}
+
+#[tauri::command]
+async fn terminal_bridge_configure(
+  config: TerminalBridgeRuntimeConfig,
+  runtime: TauriState<'_, RuntimeServerState>,
+  terminal_bridge: TauriState<'_, TerminalBridgeState>,
+) -> Result<TerminalBridgeRuntimeStatus, String> {
+  let next = TerminalBridgeRuntimeConfig {
+    enabled: config.enabled,
+    auth_token: config.auth_token.trim().to_string(),
+  };
+
+  let mut shared = terminal_bridge.config.lock().await;
+  *shared = next;
+  drop(shared);
+
+  Ok(terminal_bridge_runtime_status_payload(&runtime, &terminal_bridge).await)
+}
+
+#[tauri::command]
 async fn mcp_complete_request(
   response: McpBridgeResponse,
   mcp: TauriState<'_, McpServerState>,
@@ -1861,10 +2503,12 @@ async fn updater_install_ready(
 
 fn spawn_runtime_server(app_handle: AppHandle, shared: RuntimeServerState) {
   let mcp_state = app_handle.state::<McpServerState>().inner().clone();
+  let terminal_bridge_state = app_handle.state::<TerminalBridgeState>().inner().clone();
   let http_state = HttpRuntimeState {
     app_handle,
     shared: shared.clone(),
     mcp: mcp_state,
+    terminal_bridge: terminal_bridge_state,
   };
 
   tauri::async_runtime::spawn(async move {
@@ -1878,6 +2522,13 @@ fn spawn_runtime_server(app_handle: AppHandle, shared: RuntimeServerState) {
 
     let router = Router::new()
       .route("/mcp", post(handle_mcp_post).get(handle_mcp_get).delete(handle_mcp_delete))
+      .route("/terminal/status", any(handle_terminal_bridge_status))
+      .route("/terminal/sessions", any(handle_terminal_bridge_sessions))
+      .route("/terminal/sessions/{sessionId}", any(handle_terminal_bridge_session))
+      .route("/terminal/sessions/{sessionId}/input", any(handle_terminal_bridge_input))
+      .route("/terminal/sessions/{sessionId}/resize", any(handle_terminal_bridge_resize))
+      .route("/terminal/sessions/{sessionId}/signal", any(handle_terminal_bridge_signal))
+      .route("/terminal/sessions/{sessionId}/stream", any(handle_terminal_bridge_stream))
       .route("/", any(handle_runtime_webhook))
       .route("/{*path}", any(handle_runtime_webhook))
       .with_state(http_state);
@@ -1915,10 +2566,15 @@ pub fn run() {
         config: Arc::new(Mutex::new(McpRuntimeConfig::default())),
         pending: Arc::new(Mutex::new(HashMap::new())),
       };
+      let terminal_bridge_state = TerminalBridgeState {
+        config: Arc::new(Mutex::new(TerminalBridgeRuntimeConfig::default())),
+      };
 
       app.manage(runtime_state.clone());
       app.manage(updater_state);
       app.manage(mcp_state);
+      app.manage(terminal_bridge_state);
+      app.manage(terminal::TerminalRuntimeState::default());
       spawn_runtime_server(app.handle().clone(), runtime_state);
       app.handle().plugin(tauri_plugin_process::init())?;
       app.handle().plugin(
@@ -1942,7 +2598,16 @@ pub fn run() {
       runtime_complete_webhook_delivery,
       mcp_status,
       mcp_configure,
+      terminal_bridge_status,
+      terminal_bridge_configure,
       mcp_complete_request,
+      terminal::terminal_open_session,
+      terminal::terminal_attach_session,
+      terminal::terminal_list_sessions,
+      terminal::terminal_write_input,
+      terminal::terminal_resize_session,
+      terminal::terminal_send_signal,
+      terminal::terminal_close_session,
       updater_get_config,
       updater_check,
       updater_download,

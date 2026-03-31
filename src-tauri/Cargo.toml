@@ -29,3 +29,6 @@ uuid = { version = "1.18.1", features = ["v4"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 url = "2"
+portable-pty = "0.9.0"
+async-stream = "0.3.6"
+tokio-stream = { version = "0.1.17", features = ["sync"] }

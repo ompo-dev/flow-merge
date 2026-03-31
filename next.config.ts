@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
     unoptimized: true,
   },
   assetPrefix: isProd ? undefined : `http://${internalHost}:3000`,
+  serverExternalPackages: ["node-pty"],
 };
 
 export default nextConfig;

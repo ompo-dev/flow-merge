@@ -1313,6 +1313,12 @@ export function NodeConfigPanel() {
               escrever código customizado, inspecionar payloads brutos e montar o JSON de saída manualmente.
             </div>
           )}
+          {node.data.nodeType === "action_terminal" ? (
+            <div className="rounded-lg border border-[#21262d] bg-[#0d1117] px-3 py-2.5 text-[11px] leading-relaxed text-[#7d8590]">
+              O terminal vivo fica no proprio node do canvas. Use este painel apenas para shell,
+              diretorio, command e outras configuracoes.
+            </div>
+          ) : null}
             </div>
           )}
         </div>

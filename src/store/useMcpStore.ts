@@ -7,6 +7,7 @@ import {
   type DesktopMcpStatus,
   type McpLocalConfig,
 } from "@/lib/mcp";
+import { getSetting, setSetting } from "@/lib/storage/settings-store";
 import { configureDesktopMcp, getDesktopMcpStatus } from "@/lib/tauri-mcp";
 
 interface McpState {
@@ -14,7 +15,7 @@ interface McpState {
   syncing: boolean;
   config: McpLocalConfig;
   desktopStatus: DesktopMcpStatus | null;
-  hydrate: () => void;
+  hydrate: () => Promise<void>;
   refreshDesktopStatus: () => Promise<DesktopMcpStatus | null>;
   syncDesktopConfig: () => Promise<DesktopMcpStatus | null>;
   setEnabled: (enabled: boolean) => void;
@@ -22,34 +23,12 @@ interface McpState {
 }
 
 function readStoredConfig(): McpLocalConfig {
-  if (typeof window === "undefined") {
-    return createDefaultMcpConfig();
-  }
-
-  try {
-    const raw = window.localStorage.getItem(MCP_STORAGE_KEY);
-    if (!raw) return createDefaultMcpConfig();
-
-    const parsed = JSON.parse(raw) as Partial<McpLocalConfig>;
-    return {
-      enabled: typeof parsed.enabled === "boolean" ? parsed.enabled : true,
-      authToken:
-        typeof parsed.authToken === "string" && parsed.authToken.trim()
-          ? parsed.authToken
-          : createDefaultMcpConfig().authToken,
-      serverName:
-        typeof parsed.serverName === "string" && parsed.serverName.trim()
-          ? parsed.serverName
-          : createDefaultMcpConfig().serverName,
-    };
-  } catch {
-    return createDefaultMcpConfig();
-  }
+  return createDefaultMcpConfig();
 }
 
 function persistConfig(config: McpLocalConfig) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(MCP_STORAGE_KEY, JSON.stringify(config));
+  void setSetting("mcp-config", config).catch(() => {});
 }
 
 export const useMcpStore = create<McpState>((set, get) => ({
@@ -58,9 +37,42 @@ export const useMcpStore = create<McpState>((set, get) => ({
   config: readStoredConfig(),
   desktopStatus: null,
 
-  hydrate: () => {
+  hydrate: async () => {
     if (get().hydrated) return;
-    const config = readStoredConfig();
+
+    const persisted = await getSetting("mcp-config");
+    const fallback = typeof window !== "undefined" ? window.localStorage.getItem(MCP_STORAGE_KEY) : null;
+    const legacyConfig = fallback
+      ? (() => {
+          try {
+            return JSON.parse(fallback) as Partial<McpLocalConfig>;
+          } catch {
+            return null;
+          }
+        })()
+      : null;
+    const defaults = createDefaultMcpConfig();
+    const config: McpLocalConfig = {
+      enabled:
+        typeof persisted?.enabled === "boolean"
+          ? persisted.enabled
+          : typeof legacyConfig?.enabled === "boolean"
+            ? legacyConfig.enabled
+            : defaults.enabled,
+      authToken:
+        typeof persisted?.authToken === "string" && persisted.authToken.trim()
+          ? persisted.authToken
+          : typeof legacyConfig?.authToken === "string" && legacyConfig.authToken.trim()
+            ? legacyConfig.authToken
+            : defaults.authToken,
+      serverName:
+        typeof persisted?.serverName === "string" && persisted.serverName.trim()
+          ? persisted.serverName
+          : typeof legacyConfig?.serverName === "string" && legacyConfig.serverName.trim()
+            ? legacyConfig.serverName
+            : defaults.serverName,
+    };
+
     persistConfig(config);
     set({ hydrated: true, config });
   },

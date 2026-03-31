@@ -390,10 +390,22 @@ export function FlowMergeShell({
   const license = useAuthStore((state) => state.license);
   const hydrate = useAuthStore((state) => state.hydrate);
   const refreshStatus = useAuthStore((state) => state.refreshStatus);
+  const hydrateFromStorage = useFlowStore((state) => state.hydrateFromStorage);
+  const isFlowHydrated = useFlowStore((state) => state.isHydrated);
 
   useEffect(() => {
-    void hydrate();
-  }, [hydrate]);
+    let cancelled = false;
+
+    void (async () => {
+      await hydrateFromStorage();
+      if (cancelled) return;
+      await hydrate();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrate, hydrateFromStorage]);
 
   useEffect(() => {
     if (!license.authenticated || !license.billing.activeCharge?.id) {
@@ -409,7 +421,7 @@ export function FlowMergeShell({
     };
   }, [license.authenticated, license.billing.activeCharge?.id, refreshStatus]);
 
-  if (!hydrated) {
+  if (!hydrated || !isFlowHydrated) {
     return <BootScreen />;
   }
 

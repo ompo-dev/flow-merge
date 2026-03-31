@@ -1,11 +1,10 @@
 import type { ProjectRuntimeStore } from "@/lib/runtime-types";
-
-const RUNTIME_STORE_STORAGE_KEY = "flow-merge-runtime-store";
-
-interface PersistedRuntimeStore {
-  version: 1;
-  projects: Record<string, ProjectRuntimeStore>;
-}
+import {
+  deleteProjectRuntimeStore,
+  getAllProjectRuntimeStores,
+  getProjectRuntimeStore as readProjectRuntimeStore,
+  saveProjectRuntimeStore,
+} from "@/lib/storage/runtime-store";
 
 function createEmptyProjectStore(): ProjectRuntimeStore {
   return {
@@ -18,33 +17,25 @@ export function getEmptyProjectStore() {
   return createEmptyProjectStore();
 }
 
-export function readPersistedRuntimeStores() {
-  if (typeof window === "undefined") return {} as Record<string, ProjectRuntimeStore>;
+export async function readPersistedRuntimeStores(): Promise<Record<string, ProjectRuntimeStore>> {
+  if (typeof window === "undefined") {
+    return {};
+  }
 
-  try {
-    const raw = window.localStorage.getItem(RUNTIME_STORE_STORAGE_KEY);
-    if (!raw) return {} as Record<string, ProjectRuntimeStore>;
+  return await getAllProjectRuntimeStores();
+}
 
-    const parsed = JSON.parse(raw) as Partial<PersistedRuntimeStore>;
-    if (parsed.version !== 1 || typeof parsed.projects !== "object" || !parsed.projects) {
-      return {} as Record<string, ProjectRuntimeStore>;
-    }
+export function persistRuntimeStores(projects: Record<string, ProjectRuntimeStore>): void {
+  if (typeof window === "undefined") return;
 
-    return parsed.projects;
-  } catch {
-    return {} as Record<string, ProjectRuntimeStore>;
+  for (const [projectId, store] of Object.entries(projects)) {
+    void saveProjectRuntimeStore(projectId, store).catch(() => {});
   }
 }
 
-export function persistRuntimeStores(projects: Record<string, ProjectRuntimeStore>) {
+export function deleteProjectStore(projectId: string): void {
   if (typeof window === "undefined") return;
-
-  const payload: PersistedRuntimeStore = {
-    version: 1,
-    projects,
-  };
-
-  window.localStorage.setItem(RUNTIME_STORE_STORAGE_KEY, JSON.stringify(payload));
+  void deleteProjectRuntimeStore(projectId).catch(() => {});
 }
 
 export function getProjectRuntimeStore(
@@ -52,4 +43,12 @@ export function getProjectRuntimeStore(
   projectId: string,
 ) {
   return projects[projectId] ?? createEmptyProjectStore();
+}
+
+export async function readSingleProjectRuntimeStore(projectId: string) {
+  if (typeof window === "undefined") {
+    return createEmptyProjectStore();
+  }
+
+  return await readProjectRuntimeStore(projectId);
 }

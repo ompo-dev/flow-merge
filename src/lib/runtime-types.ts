@@ -3,6 +3,31 @@ import type { AppNode, Project, Workflow, WorkflowNodeData } from "@/lib/flow-ty
 
 export type WorkflowTriggerSource = "manual" | "schedule" | "webhook";
 
+export type TerminalSessionShell = "cmd" | "powershell" | "bash" | "zsh";
+export type TerminalSessionStatus = "idle" | "running" | "exited" | "error";
+export type TerminalSignal = "SIGINT" | "EOF" | "KILL";
+export type TerminalPatternMode = "none" | "contains" | "regex";
+
+export interface TerminalSessionSnapshot {
+  id: string;
+  projectId: string;
+  shell: TerminalSessionShell;
+  workingDirectory: string;
+  status: TerminalSessionStatus;
+  output: string;
+  promptMarker: string;
+  createdAt: string;
+  updatedAt: string;
+  exitCode: number | null;
+  cols: number;
+  rows: number;
+}
+
+export interface TerminalOutputEvent extends TerminalSessionSnapshot {
+  channel: "terminal.output" | "terminal.exit";
+  chunk: string;
+}
+
 export interface RuntimeItem {
   json: Record<string, unknown>;
 }
@@ -140,6 +165,7 @@ export interface ProjectRuntimeStore {
 }
 
 export interface WorkflowExecutionRequest {
+  workflowId?: string;
   triggerNodeId?: string;
   source: WorkflowTriggerSource;
   payload?: Record<string, unknown>;

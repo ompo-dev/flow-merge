@@ -118,6 +118,7 @@ export function WorkflowRuntimeBridge() {
           );
           return window.setInterval(() => {
             void runWorkflow({
+              workflowId: workflow.id,
               source: "schedule",
               triggerNodeId: node.id,
               payload: {

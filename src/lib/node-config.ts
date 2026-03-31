@@ -84,6 +84,30 @@ const actionSchema: NodeIOSchema = {
   },
 };
 
+const terminalSchema: NodeIOSchema = {
+  input: {
+    type: "object",
+    properties: {
+      data: { type: "object", description: "Input payload interpolated into the command" },
+      context: { type: "object", description: "Workflow context and metadata" },
+      command: { type: "string", description: "Shell command after template interpolation" },
+    },
+  },
+  output: {
+    type: "object",
+    properties: {
+      sessionId: { type: "string", description: "Persistent terminal session id" },
+      shell: { type: "string", description: "Shell used by the terminal session" },
+      workingDirectory: { type: "string", description: "Current working directory for the session" },
+      exitCode: { type: "number", description: "Exit code captured after the shell returned to the prompt" },
+      successMatched: { type: "boolean", description: "Whether the optional success pattern matched the command output" },
+      completionLine: { type: "string", description: "Last matching line found in the command output" },
+      completionPayload: { type: "string", description: "Trailing payload extracted from the completion line" },
+      output: { type: "string", description: "Raw command output without the prompt markers" },
+    },
+  },
+};
+
 const vizSchemas: Partial<Record<NodeTypeId, NodeIOSchema>> = {
   viz_metric: {
     input: {
@@ -232,6 +256,7 @@ const metricDefaults: Record<string, Record<string, unknown>> = {
 
 export function getNodeSchema(nodeType: NodeTypeId): NodeIOSchema | undefined {
   if (nodeType.startsWith("trigger_")) return triggerSchema;
+  if (nodeType === "action_terminal") return terminalSchema;
   if (nodeType.startsWith("action_")) return actionSchema;
   if (nodeType.startsWith("analytics_")) return actionSchema;
   if (nodeType.startsWith("monitor_")) return actionSchema;
@@ -287,6 +312,12 @@ export function getDefaultNodeConfig(
       return {
         title: label || "Dashboard Operacional",
         layout: "6 columns",
+      };
+    case "action_terminal":
+      return {
+        cols: 120,
+        rows: 30,
+        transcriptLimit: 12000,
       };
     default:
       return {};

@@ -1,9 +1,10 @@
 import { v4 as uuidv4 } from "uuid";
 import type { Edge } from "@xyflow/react";
-import type { AppNode, Project, Workflow, WorkflowNodeData } from "@/lib/flow-types";
+import type { AppNode, DashboardWidget, Project, Workflow, WorkflowNodeData } from "@/lib/flow-types";
 import type { NodeTypeId } from "@/lib/node-catalog";
 import { assertSafeUserCode } from "@/lib/code-safety";
 import { expandSemanticRecord } from "@/lib/data-semantics";
+import { runLocalTerminalCommand } from "@/lib/local-terminal";
 import { executeProgrammableNode, inferNodeProgrammingContext } from "@/lib/node-programming";
 import { buildWorkflowIntelligenceGraph, getActiveIncomingNodes } from "@/lib/workflow-intelligence";
 import type {
@@ -16,6 +17,7 @@ import type {
   RuntimeNodePatch,
   RuntimeReportItem,
   RuntimeNodeSnapshot,
+  TerminalPatternMode,
   RuntimeWebhookResponse,
   WorkflowExecutionRequest,
   WorkflowRunResult,
@@ -38,6 +40,9 @@ interface NodeHandlerResult {
 }
 
 const DEFAULT_AI_BASE_URL = "https://api.deepseek.com/v1/chat/completions";
+const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
+  ...args: string[]
+) => (...runtimeArgs: unknown[]) => Promise<unknown>;
 
 function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -142,6 +147,18 @@ function getLatestArtifact<TKind extends RuntimeArtifact["kind"]>(
 
 function normalizeKey(value: string) {
   return value.trim().toLowerCase();
+}
+
+function getDefaultTerminalShell() {
+  if (typeof process !== "undefined" && process.platform === "win32") {
+    return "cmd";
+  }
+
+  if (typeof navigator !== "undefined" && /windows/i.test(navigator.userAgent)) {
+    return "cmd";
+  }
+
+  return "bash";
 }
 
 function slugify(value: string) {
@@ -310,6 +327,26 @@ function toBoolean(value: unknown) {
     return normalized === "true" || normalized === "yes" || normalized === "1";
   }
   return false;
+}
+
+function coerceTerminalPatternMode(value: string): TerminalPatternMode {
+  const normalized = normalizeKey(value);
+  if (normalized.includes("regex")) return "regex";
+  if (normalized.includes("contain")) return "contains";
+  return "none";
+}
+
+function deriveTerminalSessionId(
+  projectId: string,
+  workflowId: string,
+  node: AppNode,
+) {
+  const configuredKey =
+    String(node.data.config?.sessionId ?? "").trim() ||
+    getNodeParameter(node, "Session Key") ||
+    node.id;
+
+  return `terminal_${slugify(projectId)}_${slugify(workflowId)}_${slugify(configuredKey)}`;
 }
 
 function compareValues(actual: unknown, operation: string, expected: unknown) {
@@ -1121,24 +1158,239 @@ function isTriggerNode(node: AppNode) {
   return node.data.nodeType.startsWith("trigger_");
 }
 
-async function callJsonApi(url: string, init: RequestInit) {
-  const response = await fetch(url, init);
-  const text = await response.text();
-  let json: unknown = null;
+function mergeItemsByField(items: RuntimeItem[], joinField: string) {
+  const normalizedJoinField = joinField.trim();
+  if (!normalizedJoinField) {
+    return items.map((item) => deepClone(item.json));
+  }
 
-  try {
-    json = text ? (JSON.parse(text) as unknown) : null;
-  } catch {
-    json = null;
+  const merged = new Map<string, Record<string, unknown>>();
+
+  items.forEach((item, index) => {
+    const rawKey = getValueAtPath(item.json, normalizedJoinField);
+    const fallbackKey = rawKey === undefined || rawKey === null || rawKey === ""
+      ? `__unmatched_${index}`
+      : String(rawKey);
+    const current = merged.get(fallbackKey) ?? {};
+    merged.set(fallbackKey, {
+      ...current,
+      ...deepClone(item.json),
+    });
+  });
+
+  return Array.from(merged.values());
+}
+
+function getChiSquareCriticalValue(significance: string, degreesOfFreedom: number) {
+  const normalized = significance.replace(/[^0-9]/g, "");
+  const level = normalized === "99" ? 99 : normalized === "90" ? 90 : 95;
+  const lookup: Record<number, Record<number, number>> = {
+    90: {
+      1: 2.706,
+      2: 4.605,
+      3: 6.251,
+      4: 7.779,
+      5: 9.236,
+    },
+    95: {
+      1: 3.841,
+      2: 5.991,
+      3: 7.815,
+      4: 9.488,
+      5: 11.07,
+    },
+    99: {
+      1: 6.635,
+      2: 9.21,
+      3: 11.345,
+      4: 13.277,
+      5: 15.086,
+    },
+  };
+
+  return lookup[level][Math.min(Math.max(degreesOfFreedom, 1), 5)] ?? lookup[level][1];
+}
+
+function computeAbSignificance(
+  rows: Array<{ users: number; conversions: number }>,
+  significance: string,
+) {
+  const usableRows = rows.filter((row) => row.users > 0);
+  if (usableRows.length < 2) {
+    return {
+      significant: false,
+      chiSquare: 0,
+      criticalValue: 0,
+      degreesOfFreedom: 0,
+    };
+  }
+
+  const totalUsers = usableRows.reduce((sum, row) => sum + row.users, 0);
+  const totalConversions = usableRows.reduce((sum, row) => sum + row.conversions, 0);
+  const totalNonConversions = totalUsers - totalConversions;
+
+  if (totalUsers === 0 || totalConversions === 0 || totalNonConversions === 0) {
+    return {
+      significant: false,
+      chiSquare: 0,
+      criticalValue: 0,
+      degreesOfFreedom: usableRows.length - 1,
+    };
+  }
+
+  const conversionRate = totalConversions / totalUsers;
+  const chiSquare = usableRows.reduce((sum, row) => {
+    const expectedConversions = row.users * conversionRate;
+    const expectedNonConversions = row.users * (1 - conversionRate);
+    const observedNonConversions = row.users - row.conversions;
+
+    const conversionTerm =
+      expectedConversions > 0
+        ? ((row.conversions - expectedConversions) ** 2) / expectedConversions
+        : 0;
+    const nonConversionTerm =
+      expectedNonConversions > 0
+        ? ((observedNonConversions - expectedNonConversions) ** 2) / expectedNonConversions
+        : 0;
+
+    return sum + conversionTerm + nonConversionTerm;
+  }, 0);
+
+  const degreesOfFreedom = usableRows.length - 1;
+  const criticalValue = getChiSquareCriticalValue(significance, degreesOfFreedom);
+
+  return {
+    significant: chiSquare >= criticalValue,
+    chiSquare,
+    criticalValue,
+    degreesOfFreedom,
+  };
+}
+
+function buildNotionPropertyValue(
+  value: unknown,
+  options?: {
+    asTitle?: boolean;
+  },
+) {
+  const asTitle = options?.asTitle ?? false;
+  const stringValue =
+    typeof value === "string"
+      ? value
+      : typeof value === "number" || typeof value === "boolean"
+        ? String(value)
+        : Array.isArray(value)
+          ? value.map((entry) => String(entry)).join(", ")
+          : value && typeof value === "object"
+            ? JSON.stringify(value)
+            : "";
+
+  if (asTitle) {
+    return {
+      title: [
+        {
+          text: {
+            content: stringValue || "Flow Merge entry",
+          },
+        },
+      ],
+    };
+  }
+
+  if (typeof value === "number") {
+    return {
+      number: value,
+    };
+  }
+
+  if (typeof value === "boolean") {
+    return {
+      checkbox: value,
+    };
   }
 
   return {
-    ok: response.ok,
-    status: response.status,
-    text,
-    json,
-    headers: Object.fromEntries(response.headers.entries()),
+    rich_text: [
+      {
+        text: {
+          content: stringValue,
+        },
+      },
+    ],
   };
+}
+
+function buildDashboardWidgetsFromArtifacts(
+  node: AppNode,
+  envelope: RuntimeEnvelope,
+): DashboardWidget[] {
+  const existingWidgets = Array.isArray(node.data.widgets) ? node.data.widgets : [];
+  if (existingWidgets.length) return existingWidgets;
+
+  const widgets: DashboardWidget[] = [];
+  const metric = getLatestArtifact(envelope, "metric");
+  const series = getLatestArtifact(envelope, "series");
+  const table = getLatestArtifact(envelope, "table");
+  const report = getLatestArtifact(envelope, "report");
+
+  if (metric) {
+    widgets.push({ id: "metric-1", type: "metric", x: 0, y: 0, w: 2, h: 2 });
+  }
+
+  if (series) {
+    widgets.push({
+      id: `${series.chartType === "bar" ? "barchart" : "linechart"}-1`,
+      type: series.chartType === "bar" ? "barchart" : "linechart",
+      x: 2,
+      y: 0,
+      w: 4,
+      h: 3,
+    });
+  }
+
+  if (table) {
+    widgets.push({ id: "table-1", type: "table", x: 0, y: 2, w: 3, h: 3 });
+  }
+
+  if (report) {
+    widgets.push({ id: "text-1", type: "text", x: 3, y: 3, w: 3, h: 2 });
+  }
+
+  return widgets.length
+    ? widgets
+    : [{ id: "text-1", type: "text", x: 0, y: 0, w: 3, h: 2 }];
+}
+
+async function callJsonApi(url: string, init: RequestInit) {
+  const timeoutMs = 30_000;
+  const controller = new AbortController();
+  const timeoutId = globalThis.setTimeout(() => {
+    controller.abort("FLOW_MERGE_TIMEOUT");
+  }, timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+    const text = await response.text();
+  let json: unknown = null;
+
+    try {
+      json = text ? (JSON.parse(text) as unknown) : null;
+    } catch {
+      json = null;
+    }
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      text,
+      json,
+      headers: Object.fromEntries(response.headers.entries()),
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function executeNode(
@@ -1218,31 +1470,34 @@ async function executeNode(
           ? undefined
           : JSON.stringify(items.length === 1 ? firstItem : items.map((item) => item.json));
 
-      const response = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body,
-      });
-      const rawText = await response.text();
-      const payload = responseFormat === "json" ? parseJsonIfPossible(rawText) : rawText;
+      try {
+        const response = await callJsonApi(url, {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body,
+        });
+        const payload = responseFormat === "json" ? parseJsonIfPossible(response.text) : response.text;
 
-      return {
-        outputs: {
-          default: createEnvelope(
-            [
-              {
-                status: response.status,
-                ok: response.ok,
-                body: payload as Record<string, unknown>,
-              },
-            ],
-            { status: response.status },
-          ),
-        },
-        summary: `${method} ${url}`,
-      };
+        return {
+          outputs: {
+            default: createEnvelope(
+              [
+                {
+                  status: response.status,
+                  ok: response.ok,
+                  body: payload as Record<string, unknown>,
+                },
+              ],
+              { status: response.status },
+            ),
+          },
+          summary: `${method} ${url}`,
+        };
+      } catch (error) {
+        throw new Error(`HTTP request failed: ${describeRuntimeError(error)}`);
+      }
     }
 
     case "action_set": {
@@ -1342,9 +1597,27 @@ async function executeNode(
     }
 
     case "action_merge": {
+      const mode = normalizeKey(getNodeParameter(node, "Mode") || "append rows");
+      const joinField = getNodeParameter(node, "Join Field");
+      const mergedRows = mode.includes("keep first")
+        ? items.slice(0, 1).map((item) => deepClone(item.json))
+        : mode.includes("merge by field")
+          ? mergeItemsByField(items, joinField)
+          : items.map((item) => deepClone(item.json));
+
       return {
-        outputs: { default: cloneEnvelope(input) },
-        summary: `Merged ${items.length} items`,
+        outputs: {
+          default: createEnvelope(mergedRows, {
+            mode,
+            joinField: joinField || null,
+          }),
+        },
+        summary:
+          mode.includes("keep first")
+            ? `Keep first returned ${mergedRows.length} item(s)`
+            : mode.includes("merge by field")
+              ? `Merged ${mergedRows.length} item(s) by ${joinField || "field"}`
+              : `Merged ${mergedRows.length} items`,
       };
     }
 
@@ -1389,8 +1662,7 @@ async function executeNode(
     case "action_function": {
       const code = getNodeParameter(node, "Code") || "return items.map((item) => item.json);";
       assertSafeUserCode(code, "Codigo runtime do node");
-      // Local desktop runtime by design. This executes user code on local data.
-      const executor = new Function(
+      const executor = new AsyncFunction(
         "items",
         "input",
         "context",
@@ -1399,8 +1671,8 @@ async function executeNode(
         items: RuntimeItem[],
         input: RuntimeEnvelope,
         context: RuntimeEvaluationContext,
-      ) => unknown;
-      const result = executor(items, input, context);
+      ) => Promise<unknown>;
+      const result = await executor(items, input, context);
       const normalized = Array.isArray(result)
         ? result.map((entry) =>
             typeof entry === "object" && entry ? entry : { value: entry },
@@ -1420,12 +1692,115 @@ async function executeNode(
       const unit = normalizeKey(getNodeParameter(node, "Unit") || "seconds");
       const multiplier =
         unit.includes("minute") ? 60_000 : unit.includes("hour") ? 3_600_000 : 1_000;
-      const delayMs = Math.min(Math.max(amount * multiplier, 0), 15_000);
-      await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+      const delayMs = Math.max(amount * multiplier, 0);
+      await new Promise((resolve) => globalThis.setTimeout(resolve, delayMs));
 
       return {
         outputs: { default: cloneEnvelope(input) },
         summary: `Waited ${Math.round(delayMs / 1000)}s`,
+      };
+    }
+
+    case "action_terminal": {
+      const commandTemplate = getNodeParameter(node, "Command");
+      if (!commandTemplate) {
+        throw new Error("Terminal node requires Command.");
+      }
+
+      const shellValue = normalizeKey(getNodeParameter(node, "Shell") || getDefaultTerminalShell());
+      const shell =
+        shellValue === "cmd"
+          ? "cmd"
+          : shellValue === "bash"
+            ? "bash"
+            : shellValue === "zsh"
+              ? "zsh"
+              : "powershell";
+      const workingDirectoryTemplate = getNodeParameter(node, "Working Directory");
+      const workingDirectory = workingDirectoryTemplate
+        ? String(materializeValue(workingDirectoryTemplate, firstItem, input, context) ?? "").trim()
+        : undefined;
+      const successPattern = String(
+        resolveTemplateValue(getNodeParameter(node, "Success Pattern") || "", firstItem, input, context) ?? "",
+      ).trim();
+      const successPatternMode = coerceTerminalPatternMode(
+        getNodeParameter(node, "Success Pattern Mode") || "none",
+      );
+      const timeoutSeconds = Number(getNodeParameter(node, "Timeout Seconds") || 900);
+      const reuseSession = toBoolean(getNodeParameter(node, "Reuse Session") || "Yes");
+      const closeSessionAfterRun = toBoolean(
+        getNodeParameter(node, "Close Session After Run") || "No",
+      );
+      const sessionId = reuseSession
+        ? deriveTerminalSessionId(context.project.id, context.workflow.id, node)
+        : undefined;
+      const command = String(
+        resolveTemplateValue(commandTemplate, firstItem, input, context) ?? "",
+      ).trim();
+
+      if (!command) {
+        throw new Error("Terminal node produced an empty command.");
+      }
+
+      const terminalResult = await runLocalTerminalCommand({
+        projectId: context.project.id,
+        sessionId,
+        shell,
+        workingDirectory: workingDirectory || undefined,
+        cols: Number(node.data.config?.cols) || 120,
+        rows: Number(node.data.config?.rows) || 30,
+        command,
+        timeoutMs:
+          Math.max(Number.isFinite(timeoutSeconds) ? timeoutSeconds : 900, 1) * 1_000,
+        patternMode: successPatternMode,
+        pattern: successPattern,
+        closeSessionAfterRun,
+      });
+
+      const summary =
+        successPatternMode !== "none" && successPattern
+          ? terminalResult.successMatched
+            ? `Terminal matched "${successPattern}"`
+            : `Terminal finished without matching "${successPattern}"`
+          : `Terminal finished with exit code ${terminalResult.exitCode ?? 0}`;
+
+      const terminalPayload = {
+        sessionId: terminalResult.session.id,
+        shell: terminalResult.session.shell,
+        workingDirectory: terminalResult.session.workingDirectory,
+        exitCode: terminalResult.exitCode,
+        successMatched: terminalResult.successMatched,
+        completionLine: terminalResult.completionLine,
+        completionPayload: terminalResult.completionPayload,
+        output: terminalResult.cleanedOutput,
+        durationMs: terminalResult.durationMs,
+      };
+
+      return {
+        outputs: {
+          default: createEnvelope(
+            [terminalPayload],
+            {
+              ...input.meta,
+              terminal: true,
+            },
+            getForwardedArtifacts(input),
+          ),
+        },
+        summary,
+        patch: {
+          config: {
+            ...(node.data.config ?? {}),
+            sessionId: reuseSession ? terminalResult.session.id : null,
+            lastWorkingDirectory: terminalResult.session.workingDirectory,
+            lastCommandAt: new Date().toISOString(),
+            transcript: terminalResult.cleanedOutput,
+          },
+          notes:
+            terminalResult.completionLine ??
+            terminalResult.cleanedOutput.slice(-320) ??
+            undefined,
+        },
       };
     }
 
@@ -1637,6 +2012,7 @@ async function executeNode(
 
     case "analytics_ab": {
       const minimumSample = Number(getNodeParameter(node, "Minimum Sample") || 100);
+      const significance = getNodeParameter(node, "Significance") || "95%";
       const activeStoreNames = getActiveStoreNamesForNode(context.workflow, node.id);
       const storeNames = activeStoreNames.length
         ? activeStoreNames
@@ -1710,6 +2086,7 @@ async function executeNode(
           revenue,
         };
       });
+      const significanceResult = computeAbSignificance(rows, significance);
 
       const baselineRow =
         rows.find((row) => row.label === baseline) ??
@@ -1740,7 +2117,7 @@ async function executeNode(
       const insight =
         winner === "insufficient_sample"
           ? `Need at least ${minimumSample} users per variant before declaring a winner. ${revenueLeaderRow?.label ?? "No variant"} currently leads revenue with ${formatCurrencyValue(revenueLeaderRow?.revenue ?? 0)}.`
-          : `${winner} leads with ${winningRate}% conversion from ${winnerRow?.conversions ?? 0}/${winnerRow?.users ?? 0} users.`;
+          : `${winner} leads with ${winningRate}% conversion from ${winnerRow?.conversions ?? 0}/${winnerRow?.users ?? 0} users. ${significanceResult.significant ? "The chi-square threshold was reached." : "The chi-square threshold was not reached yet."}`;
       const reportItems = rows.map((row) => {
         const diff = row.rate - baselineRow.rate;
         return {
@@ -1764,6 +2141,10 @@ async function executeNode(
                 winningUsers: winnerRow?.users ?? 0,
                 winningConversions: winnerRow?.conversions ?? 0,
                 minimumSample,
+                significance,
+                significant: significanceResult.significant,
+                chiSquare: Number(significanceResult.chiSquare.toFixed(4)),
+                criticalValue: Number(significanceResult.criticalValue.toFixed(4)),
                 variants: rows.map((row) => ({
                   label: row.label,
                   users: row.users,
@@ -1805,7 +2186,9 @@ async function executeNode(
                 compareLabel:
                   winner === "insufficient_sample"
                     ? `Need ${minimumSample}+ users`
-                    : `${winningRate}% conversion`,
+                    : significanceResult.significant
+                      ? `${winningRate}% conversion`
+                      : `${winningRate}% conversion, sem significancia`,
               },
               {
                 kind: "report",
@@ -1821,11 +2204,16 @@ async function executeNode(
     }
 
     case "analytics_funnel": {
-      const stages = [
-        getNodeParameter(node, "Step 1") || "page_view",
-        getNodeParameter(node, "Step 2") || "signup",
-        getNodeParameter(node, "Step 3") || "paid",
-      ].filter(Boolean);
+      const stages = Array.from(
+        new Set(
+          [
+            getNodeParameter(node, "Step 1") || "page_view",
+            getNodeParameter(node, "Step 2") || "signup",
+            getNodeParameter(node, "Step 3") || "trial",
+            getNodeParameter(node, "Step 4") || "paid",
+          ].filter(Boolean),
+        ),
+      );
 
       const rows = stages.map((stage) => ({
         label: stage,
@@ -1970,6 +2358,9 @@ async function executeNode(
         getNodeParameter(node, "Field") ||
         (comparisonArtifact ? "{{ input.first.total }}" : "{{ $json.value }}");
       const channel = getNodeParameter(node, "Channel") || "log";
+      const messageTemplate =
+        getNodeParameter(node, "Message") ||
+        `${node.data.label}: threshold ${threshold} reached for ${field}`;
 
       const matches = items.filter(
         (item) => toNumber(materializeValue(field, item.json, input, context)) >= threshold,
@@ -1980,6 +2371,66 @@ async function executeNode(
         matches: matches.length,
         channel,
       };
+      const alertMessage = String(
+        materializeValue(messageTemplate, alertPayload, createEnvelope([alertPayload]), context),
+      );
+
+      if (alertPayload.triggered) {
+        if (normalizeKey(channel).includes("slack")) {
+          const webhookUrl = getNodeParameter(node, "Webhook URL");
+          if (webhookUrl) {
+            const slackResponse = await callJsonApi(webhookUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ text: alertMessage }),
+            });
+            if (!slackResponse.ok) {
+              throw new Error(`Slack alert failed with status ${slackResponse.status}`);
+            }
+          }
+        } else if (normalizeKey(channel).includes("email")) {
+          const apiKey = getNodeParameter(node, "API Key");
+          const from = getNodeParameter(node, "From");
+          const to = getNodeParameter(node, "To");
+          if (apiKey && from && to) {
+            const emailResponse = await callJsonApi("https://api.resend.com/emails", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                from,
+                to: [to],
+                subject: getNodeParameter(node, "Subject") || node.data.label,
+                text: alertMessage,
+              }),
+            });
+            if (!emailResponse.ok) {
+              throw new Error(`Email alert failed with status ${emailResponse.status}`);
+            }
+          }
+        } else if (normalizeKey(channel).includes("webhook")) {
+          const webhookUrl = getNodeParameter(node, "Webhook URL");
+          if (webhookUrl) {
+            const webhookResponse = await callJsonApi(webhookUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                ...alertPayload,
+                message: alertMessage,
+              }),
+            });
+            if (!webhookResponse.ok) {
+              throw new Error(`Webhook alert failed with status ${webhookResponse.status}`);
+            }
+          }
+        }
+      }
 
       return {
         outputs: {
@@ -2046,14 +2497,21 @@ async function executeNode(
         getNodeParameter(node, "Message") || JSON.stringify(firstItem);
       const message = String(materializeValue(messageTemplate, firstItem, input, context));
 
-      if (webhookUrl) {
-        await fetch(webhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: channel ? `${channel}: ${message}` : message,
-          }),
-        });
+      try {
+        if (webhookUrl) {
+          const response = await callJsonApi(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: channel ? `${channel}: ${message}` : message,
+            }),
+          });
+          if (!response.ok) {
+            throw new Error(`Slack webhook returned ${response.status}`);
+          }
+        }
+      } catch (error) {
+        throw new Error(`Slack action failed: ${describeRuntimeError(error)}`);
       }
 
       return {
@@ -2070,20 +2528,27 @@ async function executeNode(
       const message =
         getNodeParameter(node, "Message") || JSON.stringify(firstItem, null, 2);
 
-      if (apiKey && from && to) {
-        await callJsonApi("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            from,
-            to: [to],
-            subject,
-            text: message,
-          }),
-        });
+      try {
+        if (apiKey && from && to) {
+          const response = await callJsonApi("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from,
+              to: [to],
+              subject,
+              text: message,
+            }),
+          });
+          if (!response.ok) {
+            throw new Error(`Resend returned ${response.status}`);
+          }
+        }
+      } catch (error) {
+        throw new Error(`Email action failed: ${describeRuntimeError(error)}`);
       }
 
       return {
@@ -2105,15 +2570,38 @@ async function executeNode(
         };
       }
 
-      const url = operation.includes("pull")
-        ? `https://api.github.com/repos/${owner}/${repository}/pulls`
-        : `https://api.github.com/repos/${owner}/${repository}`;
+      const title =
+        getNodeParameter(node, "Title") ||
+        String(firstItem.title ?? firstItem.name ?? node.data.label);
+      const body =
+        getNodeParameter(node, "Body") ||
+        String(firstItem.body ?? firstItem.message ?? JSON.stringify(firstItem, null, 2));
+      const issueNumber = Number(
+        getNodeParameter(node, "Issue Number") || firstItem.issueNumber || firstItem.issue_number || 0,
+      );
+      const url = operation.includes("create issue")
+        ? `https://api.github.com/repos/${owner}/${repository}/issues`
+        : operation.includes("create comment")
+          ? `https://api.github.com/repos/${owner}/${repository}/issues/${issueNumber}/comments`
+          : `https://api.github.com/repos/${owner}/${repository}/pulls`;
       const response = await callJsonApi(url, {
+        method:
+          operation.includes("create issue") || operation.includes("create comment") ? "POST" : "GET",
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
         },
+        body:
+          operation.includes("create issue")
+            ? JSON.stringify({ title, body })
+            : operation.includes("create comment")
+              ? JSON.stringify({ body })
+              : undefined,
       });
+      if (!response.ok) {
+        throw new Error(`GitHub ${operation} failed with status ${response.status}`);
+      }
 
       return {
         outputs: {
@@ -2132,6 +2620,8 @@ async function executeNode(
       const token = getNodeParameter(node, "Token");
       const databaseId = getNodeParameter(node, "Database ID");
       const operation = normalizeKey(getNodeParameter(node, "Operation") || "create");
+      const pageId = getNodeParameter(node, "Page ID");
+      const titleProperty = getNodeParameter(node, "Title Property") || "Name";
 
       if (!token || !databaseId) {
         return {
@@ -2140,28 +2630,37 @@ async function executeNode(
         };
       }
 
+      const properties = Object.entries(firstItem).reduce<Record<string, unknown>>(
+        (accumulator, [key, value]) => {
+          accumulator[key] = buildNotionPropertyValue(value, {
+            asTitle: key === titleProperty,
+          });
+          return accumulator;
+        },
+        {
+          [titleProperty]: buildNotionPropertyValue(
+            firstItem.title ?? firstItem.name ?? "Flow Merge entry",
+            { asTitle: true },
+          ),
+        },
+      );
       const url = operation.includes("query")
         ? `https://api.notion.com/v1/databases/${databaseId}/query`
-        : "https://api.notion.com/v1/pages";
+        : operation.includes("update") && pageId
+          ? `https://api.notion.com/v1/pages/${pageId}`
+          : "https://api.notion.com/v1/pages";
+      const method = operation.includes("update") && pageId ? "PATCH" : "POST";
       const body = operation.includes("query")
         ? {}
-        : {
-            parent: { database_id: databaseId },
-            properties: {
-              Name: {
-                title: [
-                  {
-                    text: {
-                      content: String(firstItem.title ?? firstItem.name ?? "Flow Merge entry"),
-                    },
-                  },
-                ],
-              },
-            },
-          };
+        : operation.includes("update") && pageId
+          ? { properties }
+          : {
+              parent: { database_id: databaseId },
+              properties,
+            };
 
       const response = await callJsonApi(url, {
-        method: "POST",
+        method,
         headers: {
           Authorization: `Bearer ${token}`,
           "Notion-Version": "2022-06-28",
@@ -2169,6 +2668,9 @@ async function executeNode(
         },
         body: JSON.stringify(body),
       });
+      if (!response.ok) {
+        throw new Error(`Notion ${operation} failed with status ${response.status}`);
+      }
 
       return {
         outputs: {
@@ -2463,11 +2965,17 @@ async function executeNode(
     }
 
     case "viz_dashboard": {
+      const widgets = buildDashboardWidgetsFromArtifacts(node, input);
       return {
         outputs: { default: cloneEnvelope(input) },
-        summary: "Dashboard available for widget composition",
+        summary: `Dashboard updated with ${widgets.length} widget(s)`,
         patch: {
           notes: `Latest input items: ${items.length}`,
+          widgets,
+          config: {
+            ...(node.data.config ?? {}),
+            widgets,
+          },
         },
       };
     }

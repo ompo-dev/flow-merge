@@ -2,6 +2,7 @@
 
 import { memo, useMemo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { TerminalNodeControls } from "@/components/canvas/TerminalNodeControls";
 import type { AppNode } from "@/lib/flow-types";
 import {
   coerceTextValue,
@@ -10,16 +11,26 @@ import {
   StandardHandles,
 } from "@/components/nodes/SharedNodeComponents";
 import { getNodeSemanticState } from "@/lib/workflow-intelligence";
-import { useActiveWorkflow } from "@/store/useFlowStore";
+import { useActiveWorkflow, useFlowStore } from "@/store/useFlowStore";
+
+function getDefaultTerminalShell() {
+  if (typeof navigator !== "undefined" && /windows/i.test(navigator.userAgent)) {
+    return "cmd" as const;
+  }
+
+  return "bash" as const;
+}
 
 function ActionNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
   const activeWorkflow = useActiveWorkflow();
+  const setSelectedNodeId = useFlowStore((state) => state.setSelectedNodeId);
   const semanticState = useMemo(
     () => (activeWorkflow ? getNodeSemanticState(activeWorkflow, id) : null),
     [activeWorkflow, id],
   );
   const isIfNode = data.nodeType === "action_if";
   const isSwitchNode = data.nodeType === "action_switch";
+  const isTerminalNode = data.nodeType === "action_terminal";
   const isBranching = isIfNode || isSwitchNode;
   const switchCases = isSwitchNode
     ? Array.from({ length: 4 }, (_, index) => {
@@ -37,7 +48,34 @@ function ActionNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
     (key) => coerceTextValue(data.parameters?.[key]).trim() !== "",
   ).length;
   const runtime = data.runtime;
+  const terminalPreview =
+    runtime?.outputPreview &&
+    typeof runtime.outputPreview === "object" &&
+    !Array.isArray(runtime.outputPreview)
+      ? (runtime.outputPreview as Record<string, unknown>)
+      : null;
   const isVisuallyInactive = Boolean(data.disabled || semanticState?.autoBlocked);
+
+  if (isTerminalNode) {
+    return (
+      <div className={`relative ${isVisuallyInactive ? "opacity-55" : ""}`.trim()}>
+        <div
+          className={`w-[860px] max-w-[860px] min-w-[860px] rounded-lg transition-shadow ${
+            selected ? "shadow-[0_0_0_1px_#1f6feb,0_0_0_4px_rgba(31,111,235,0.16)]" : ""
+          }`.trim()}
+        >
+          <TerminalNodeControls
+            nodeId={id}
+            onActivate={() => setSelectedNodeId(id)}
+            shell={(coerceTextValue(data.parameters?.Shell, getDefaultTerminalShell()) ||
+              getDefaultTerminalShell()) as "cmd" | "powershell" | "bash" | "zsh"}
+            workingDirectory={coerceTextValue(data.parameters?.["Working Directory"], ".").trim() || "."}
+          />
+        </div>
+        <StandardHandles type="both" />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -52,6 +90,7 @@ function ActionNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
           accent={(data.accent as string) ?? "#1f6feb"}
           badge={(data.badge as string) ?? "ACTION"}
         />
+
         <div className="px-3 py-2.5">
           <p className="text-xs leading-relaxed text-[#7d8590]">
             {coerceTextValue(data.description, "Processes data")}
@@ -61,7 +100,21 @@ function ActionNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
             {data.disabled ? <span>desativado</span> : null}
             {!data.disabled && semanticState?.autoBlocked ? <span>bloqueado</span> : null}
             {runtime?.status && runtime.status !== "idle" ? <span>{runtime.status}</span> : null}
+            {terminalPreview?.sessionId ? <span>sessao ativa</span> : null}
           </div>
+          {terminalPreview ? (
+            <div className="mt-2 rounded border border-[#21262d] bg-[#0d1117] px-2 py-1.5 text-[10px] text-[#7d8590]">
+              <div className="font-mono text-[#e6edf3]">
+                {String(terminalPreview.shell ?? "shell")} .{" "}
+                {String(terminalPreview.workingDirectory ?? ".")}
+              </div>
+              {terminalPreview.completionPayload ? (
+                <div className="mt-1 text-[#7ee787]">
+                  {String(terminalPreview.completionPayload)}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {runtime?.summary ? (
             <p className="mt-2 rounded border border-[#21262d] bg-[#0d1117] px-2 py-1 text-[10px] leading-relaxed text-[#7d8590]">
               {runtime.summary}
@@ -73,6 +126,7 @@ function ActionNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
             </p>
           ) : null}
         </div>
+
         {isBranching ? (
           <>
             <Handle id="left-target" type="target" position={Position.Left} />
@@ -90,7 +144,8 @@ function ActionNodeComponent({ id, data, selected }: NodeProps<AppNode>) {
             ) : (
               <>
                 {switchCases.map((entry, index) => {
-                  const top = 24 + index * (switchCases.length > 1 ? 54 / (switchCases.length - 1) : 0);
+                  const top =
+                    24 + index * (switchCases.length > 1 ? 54 / (switchCases.length - 1) : 0);
                   return (
                     <Handle
                       key={entry.handle}

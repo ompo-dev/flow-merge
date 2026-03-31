@@ -170,6 +170,16 @@ const PLAYBOOK: Record<NodeTypeId, NodePlaybookEntry> = {
     topology: "analytics/viz-ready data -> action_openai -> report/notification.",
     programming: "Ask for concise, structured output. Keep prompt specific to the business task.",
   },
+  action_terminal: {
+    keywords: ["terminal", "shell", "cmd", "powershell", "bash", "claude code", "codex", "gemini cli", "local command"],
+    summary: "Run a real local shell session inside the desktop runtime and continue the workflow with its output.",
+    useWhen: "Use for local-first automations that need CLI tools, repo commands, OS scripts, or autonomous coding agents on the user's own machine.",
+    avoidWhen: "Do not use on the web build. Do not use when HTTP, GitHub, or another deterministic integration is enough.",
+    expects: "A command template, optional working directory, and optional success pattern like 'Terminei'.",
+    emits: "sessionId, shell, workingDirectory, exitCode, output, successMatched, completionLine, and completionPayload.",
+    topology: "monitor/log trigger -> action_terminal -> notify/store/report.",
+    programming: "Prefer explicit commands, set a generous timeout for long agents, and use Success Pattern when downstream nodes need to react to a final phrase.",
+  },
   action_function: {
     keywords: ["function", "transform", "custom", "logic"],
     summary: "Short programmable transform similar to code node.",

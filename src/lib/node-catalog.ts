@@ -14,6 +14,7 @@ export type NodeTypeId =
   | "action_notion"
   | "action_github"
   | "action_openai"
+  | "action_terminal"
   | "action_function"
   | "action_filter"
   | "action_wait"
@@ -138,6 +139,24 @@ const openAiModelOptions: NodeParameterOption[] = [
   { value: "gpt-4o-mini", label: "gpt-4o-mini" },
   { value: "gpt-4.1-mini", label: "gpt-4.1-mini" },
   { value: "deepseek-chat", label: "deepseek-chat" },
+];
+
+const terminalShellOptions: NodeParameterOption[] = [
+  { value: "powershell", label: "PowerShell" },
+  { value: "cmd", label: "CMD" },
+  { value: "bash", label: "Bash" },
+  { value: "zsh", label: "Zsh" },
+];
+
+const terminalPatternModeOptions: NodeParameterOption[] = [
+  { value: "contains", label: "Contem texto" },
+  { value: "regex", label: "Regex" },
+  { value: "none", label: "Nao validar" },
+];
+
+const yesNoToggleOptions: NodeParameterOption[] = [
+  { value: "Yes", label: "Sim" },
+  { value: "No", label: "Nao" },
 ];
 
 const filterRuleOptions: NodeParameterOption[] = compareOptions;
@@ -374,6 +393,17 @@ export const nodeCategories: Array<{
         category: "Core",
         shellType: "actionNode",
         badge: "ACTION",
+        accent: "#1f6feb",
+        subtle: "#0c1a2e",
+      },
+      {
+        type: "action_terminal",
+        label: "Local Terminal",
+        description: "Abre um terminal real da maquina local e executa comandos no shell.",
+        icon: "Terminal",
+        category: "Core",
+        shellType: "actionNode",
+        badge: "LOCAL",
         accent: "#1f6feb",
         subtle: "#0c1a2e",
       },
@@ -879,6 +909,69 @@ export const parameterDefaults: Record<NodeTypeId, NodeParameterField[]> = {
       options: openAiModelOptions,
     },
     { label: "Prompt", type: "textarea", placeholder: "Resuma as métricas do dia..." },
+  ],
+  action_terminal: [
+    {
+      label: "Shell",
+      type: "select",
+      placeholder: "CMD",
+      helpText: "Shell real aberto na maquina local do usuario.",
+      options: terminalShellOptions,
+    },
+    {
+      label: "Working Directory",
+      type: "text",
+      placeholder: "C:\\Projects\\MeuProjeto",
+      helpText: "Pasta inicial da sessao. Se ficar vazio, usa a pasta padrao do sistema.",
+    },
+    {
+      label: "Session Key",
+      type: "text",
+      placeholder: "bug-fixer",
+      helpText: "Chave opcional para reutilizar a mesma sessao entre runs e entre nodes.",
+    },
+    {
+      label: "Command",
+      type: "textarea",
+      placeholder:
+        "claude-code \"investigue {{ input.first.message }} e quando terminar diga Terminei {descricao}\"",
+      helpText:
+        "Comando enviado ao terminal. Pode usar expressoes como {{ input.first.message }}.",
+    },
+    {
+      label: "Timeout Seconds",
+      type: "number",
+      placeholder: "900",
+      helpText: "Tempo maximo para esperar o shell voltar ao prompt.",
+    },
+    {
+      label: "Success Pattern Mode",
+      type: "select",
+      placeholder: "Contem texto",
+      helpText: "Opcional. Depois que o comando termina, procura um texto ou regex no output.",
+      options: terminalPatternModeOptions,
+    },
+    {
+      label: "Success Pattern",
+      type: "text",
+      placeholder: "Terminei",
+      helpText:
+        "Usado para capturar uma linha final como 'Terminei {descricao do problema}'.",
+    },
+    {
+      label: "Reuse Session",
+      type: "select",
+      placeholder: "Sim",
+      helpText: "Quando ligado, o node reaproveita a mesma sessao local sempre que puder.",
+      options: yesNoToggleOptions,
+    },
+    {
+      label: "Close Session After Run",
+      type: "select",
+      placeholder: "Nao",
+      helpText: "Fecha a sessao depois do comando. Deixe desligado para terminais persistentes.",
+      options: yesNoToggleOptions,
+    },
   ],
   action_function: [{ label: "Code", type: "textarea", placeholder: "return transform(input);" }],
   action_filter: [
