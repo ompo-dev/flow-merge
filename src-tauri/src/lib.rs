@@ -4,10 +4,11 @@ use axum::{
   body::{Body, Bytes},
   extract::State as AxumState,
   http::{HeaderMap, Method, Response, StatusCode, Uri},
-  routing::any,
+  routing::{any, post},
   Router,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, State as TauriState};
 use tauri_plugin_updater::{Update, UpdaterExt};
 use tokio::{
@@ -19,6 +20,10 @@ use url::Url;
 
 const RUNTIME_PORT: u16 = 45431;
 const RUNTIME_EVENT_NAME: &str = "runtime://webhook";
+const MCP_REQUEST_EVENT_NAME: &str = "mcp://request";
+const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
+const MCP_FALLBACK_PROTOCOL_VERSION: &str = "2025-03-26";
+const MCP_DEFAULT_SERVER_NAME: &str = "flow-merge-local";
 const UPDATER_EVENT_NAME: &str = "updater://state";
 const UPDATER_CHECK_INTERVAL_MS: u64 = 6 * 60 * 60 * 1000;
 const DEV_UPDATER_PUBLIC_KEY: &str = include_str!("../updater.dev.pubkey");
@@ -76,6 +81,60 @@ struct RuntimeServerState {
 struct HttpRuntimeState {
   app_handle: AppHandle,
   shared: RuntimeServerState,
+  mcp: McpServerState,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpRuntimeConfig {
+  pub enabled: bool,
+  pub auth_token: String,
+  pub server_name: String,
+}
+
+impl Default for McpRuntimeConfig {
+  fn default() -> Self {
+    Self {
+      enabled: false,
+      auth_token: String::new(),
+      server_name: MCP_DEFAULT_SERVER_NAME.to_string(),
+    }
+  }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpRuntimeStatus {
+  pub available: bool,
+  pub running: bool,
+  pub port: u16,
+  pub base_url: String,
+  pub endpoint_url: String,
+  pub enabled: bool,
+  pub server_name: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpBridgeRequest {
+  pub request_id: String,
+  pub kind: String,
+  pub payload: Option<Value>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpBridgeResponse {
+  pub request_id: String,
+  pub ok: bool,
+  pub payload: Option<Value>,
+  pub error: Option<String>,
+}
+
+#[derive(Clone)]
+struct McpServerState {
+  config: Arc<Mutex<McpRuntimeConfig>>,
+  pending: Arc<Mutex<HashMap<String, oneshot::Sender<McpBridgeResponse>>>>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -259,6 +318,536 @@ fn parse_query(uri: &Uri) -> Option<HashMap<String, String>> {
   Some(values)
 }
 
+fn parse_jsonrpc_id(body: &Value) -> Option<Value> {
+  body.get("id").cloned()
+}
+
+fn jsonrpc_body(value: &Value) -> Response<Body> {
+  Response::builder()
+    .status(StatusCode::OK)
+    .header("content-type", "application/json")
+    .body(Body::from(value.to_string()))
+    .unwrap_or_else(|_| Response::new(Body::from(value.to_string())))
+}
+
+fn jsonrpc_success(id: Value, result: Value) -> Response<Body> {
+  jsonrpc_body(&json!({
+    "jsonrpc": "2.0",
+    "id": id,
+    "result": result,
+  }))
+}
+
+fn jsonrpc_error(
+  id: Option<Value>,
+  code: i64,
+  message: &str,
+  data: Option<Value>,
+  status: StatusCode,
+) -> Response<Body> {
+  let body = json!({
+    "jsonrpc": "2.0",
+    "id": id.unwrap_or(Value::Null),
+    "error": {
+      "code": code,
+      "message": message,
+      "data": data,
+    }
+  });
+
+  Response::builder()
+    .status(status)
+    .header("content-type", "application/json")
+    .body(Body::from(body.to_string()))
+    .unwrap_or_else(|_| Response::new(Body::from(body.to_string())))
+}
+
+fn accepted_empty_response() -> Response<Body> {
+  Response::builder()
+    .status(StatusCode::ACCEPTED)
+    .body(Body::empty())
+    .unwrap_or_else(|_| Response::new(Body::empty()))
+}
+
+fn local_base_url(port: u16) -> String {
+  format!("http://127.0.0.1:{port}")
+}
+
+fn local_mcp_url(port: u16) -> String {
+  format!("{}/mcp", local_base_url(port))
+}
+
+fn is_allowed_local_host(host: &str) -> bool {
+  let without_port = host.split(':').next().unwrap_or_default().trim();
+  matches!(without_port, "127.0.0.1" | "localhost")
+}
+
+fn is_allowed_origin(origin: &str) -> bool {
+  if origin.trim().is_empty() || origin == "null" {
+    return true;
+  }
+
+  Url::parse(origin)
+    .ok()
+    .and_then(|value| value.host_str().map(str::to_string))
+    .map(|host| matches!(host.as_str(), "127.0.0.1" | "localhost"))
+    .unwrap_or(false)
+}
+
+fn extract_mcp_token(uri: &Uri, headers: &HeaderMap) -> Option<String> {
+  if let Some(query) = parse_query(uri) {
+    if let Some(token) = query.get("token") {
+      let trimmed = token.trim();
+      if !trimmed.is_empty() {
+        return Some(trimmed.to_string());
+      }
+    }
+  }
+
+  if let Some(value) = headers.get("x-flow-merge-mcp-token") {
+    if let Ok(token) = value.to_str() {
+      let trimmed = token.trim();
+      if !trimmed.is_empty() {
+        return Some(trimmed.to_string());
+      }
+    }
+  }
+
+  headers
+    .get("authorization")
+    .and_then(|value| value.to_str().ok())
+    .map(|value| value.trim())
+    .and_then(|value| value.strip_prefix("Bearer "))
+    .map(str::trim)
+    .filter(|value| !value.is_empty())
+    .map(str::to_string)
+}
+
+async fn mcp_runtime_status_payload(
+  runtime: &RuntimeServerState,
+  mcp: &McpServerState,
+) -> McpRuntimeStatus {
+  let running = *runtime.running.lock().await;
+  let config = mcp.config.lock().await.clone();
+
+  McpRuntimeStatus {
+    available: true,
+    running,
+    port: runtime.port,
+    base_url: local_base_url(runtime.port),
+    endpoint_url: local_mcp_url(runtime.port),
+    enabled: config.enabled,
+    server_name: config.server_name,
+  }
+}
+
+async fn validate_mcp_http_request(
+  uri: &Uri,
+  headers: &HeaderMap,
+  runtime: &RuntimeServerState,
+  mcp: &McpServerState,
+) -> Option<Response<Body>> {
+  if let Some(host) = headers.get("host").and_then(|value| value.to_str().ok()) {
+    if !is_allowed_local_host(host) {
+      return Some(jsonrpc_error(
+        None,
+        -32001,
+        "Forbidden host",
+        None,
+        StatusCode::FORBIDDEN,
+      ));
+    }
+  }
+
+  if let Some(origin) = headers.get("origin").and_then(|value| value.to_str().ok()) {
+    if !is_allowed_origin(origin) {
+      return Some(jsonrpc_error(
+        None,
+        -32001,
+        "Forbidden origin",
+        None,
+        StatusCode::FORBIDDEN,
+      ));
+    }
+  }
+
+  if let Some(protocol_version) = headers
+    .get("mcp-protocol-version")
+    .and_then(|value| value.to_str().ok())
+  {
+    if protocol_version != MCP_PROTOCOL_VERSION && protocol_version != MCP_FALLBACK_PROTOCOL_VERSION {
+      return Some(jsonrpc_error(
+        None,
+        -32602,
+        "Unsupported MCP protocol version",
+        Some(json!({
+          "supported": [MCP_PROTOCOL_VERSION, MCP_FALLBACK_PROTOCOL_VERSION],
+          "requested": protocol_version,
+        })),
+        StatusCode::BAD_REQUEST,
+      ));
+    }
+  }
+
+  let config = mcp.config.lock().await.clone();
+  if !config.enabled {
+    return Some(jsonrpc_error(
+      None,
+      -32002,
+      "Flow Merge MCP is disabled",
+      None,
+      StatusCode::SERVICE_UNAVAILABLE,
+    ));
+  }
+
+  let token = extract_mcp_token(uri, headers);
+  if token.as_deref() != Some(config.auth_token.as_str()) {
+    return Some(jsonrpc_error(
+      None,
+      -32003,
+      "Invalid MCP token",
+      None,
+      StatusCode::UNAUTHORIZED,
+    ));
+  }
+
+  if !*runtime.running.lock().await {
+    return Some(jsonrpc_error(
+      None,
+      -32004,
+      "Flow Merge local runtime is not running",
+      None,
+      StatusCode::SERVICE_UNAVAILABLE,
+    ));
+  }
+
+  None
+}
+
+fn mcp_server_capabilities() -> Value {
+  json!({
+    "logging": {},
+    "tools": {},
+    "resources": {},
+    "prompts": {},
+  })
+}
+
+fn mcp_server_info() -> Value {
+  json!({
+    "name": "flow-merge",
+    "title": "Flow Merge Local MCP",
+    "version": env!("CARGO_PKG_VERSION"),
+    "description": "Local-first MCP server backed by the Flow Merge desktop runtime and native workspace assistant.",
+  })
+}
+
+fn mcp_instructions() -> String {
+  "Use Flow Merge to inspect the local workspace, read workflow JSON, switch the active workflow, and run the native assistant that can create or modify flows in the same local canvas used by the desktop app.".to_string()
+}
+
+fn mcp_tools_list() -> Value {
+  json!({
+    "tools": [
+      {
+        "name": "flow_merge_workspace_snapshot",
+        "title": "Workspace snapshot",
+        "description": "Return the local Flow Merge workspace summary, active workflow, license status, and MCP availability.",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "flow_merge_get_workflow",
+        "title": "Get workflow",
+        "description": "Read the full JSON of the active workflow or a specific workflow by id.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "workflowId": {
+              "type": "string",
+              "description": "Optional workflow id. Falls back to the active workflow."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "flow_merge_set_active_workflow",
+        "title": "Set active workflow",
+        "description": "Switch the active project and workflow inside the local Flow Merge desktop app.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "workflowId": {
+              "type": "string",
+              "description": "Workflow id to activate."
+            }
+          },
+          "required": ["workflowId"],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "flow_merge_run_assistant",
+        "title": "Run native assistant",
+        "description": "Run the same native Flow Merge assistant used by the in-app chat, optionally applying the generated changes to the local canvas.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "Markdown prompt for the native Flow Merge assistant."
+            },
+            "workflowId": {
+              "type": "string",
+              "description": "Optional target workflow id. Defaults to the active workflow."
+            },
+            "applyChanges": {
+              "type": "boolean",
+              "description": "When true, the assistant mutates the local canvas."
+            },
+            "contextNodeIds": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Optional node ids to send as context."
+            },
+            "history": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": ["user", "assistant"]
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                },
+                "required": ["role", "content"],
+                "additionalProperties": false
+              },
+              "description": "Optional short chat history to preserve context."
+            }
+          },
+          "required": ["prompt"],
+          "additionalProperties": false
+        }
+      }
+    ]
+  })
+}
+
+fn mcp_resources_list() -> Value {
+  json!({
+    "resources": [
+      {
+        "uri": "flowmerge://workspace/snapshot",
+        "name": "workspace-snapshot",
+        "title": "Workspace snapshot",
+        "description": "Resumo do workspace local do Flow Merge.",
+        "mimeType": "application/json"
+      },
+      {
+        "uri": "flowmerge://license/status",
+        "name": "license-status",
+        "title": "License status",
+        "description": "Estado comercial e de acesso da conta autenticada.",
+        "mimeType": "application/json"
+      },
+      {
+        "uri": "flowmerge://workflow/active",
+        "name": "active-workflow",
+        "title": "Active workflow",
+        "description": "JSON do workflow atualmente ativo.",
+        "mimeType": "application/json"
+      }
+    ]
+  })
+}
+
+fn mcp_resource_templates_list() -> Value {
+  json!({
+    "resourceTemplates": [
+      {
+        "uriTemplate": "flowmerge://workflow/{workflowId}",
+        "name": "workflow-by-id",
+        "title": "Workflow by id",
+        "description": "Leia qualquer workflow local do Flow Merge pelo id.",
+        "mimeType": "application/json"
+      }
+    ]
+  })
+}
+
+fn mcp_prompts_list() -> Value {
+  json!({
+    "prompts": [
+      {
+        "name": "build_local_workflow",
+        "title": "Build local workflow",
+        "description": "Guide the client to ask Flow Merge to create a new local workflow.",
+        "arguments": [
+          {
+            "name": "goal",
+            "description": "Desired workflow outcome or operator loop.",
+            "required": true
+          }
+        ]
+      },
+      {
+        "name": "analyze_active_workflow",
+        "title": "Analyze active workflow",
+        "description": "Ask Flow Merge to inspect the active workflow and explain the operational impact."
+      },
+      {
+        "name": "integrate_project_signal",
+        "title": "Integrate project signal",
+        "description": "Ask Flow Merge to connect a signal from the current codebase to the local canvas.",
+        "arguments": [
+          {
+            "name": "signal",
+            "description": "The signal or source to integrate, e.g. funnel events, errors, churn markers.",
+            "required": true
+          }
+        ]
+      }
+    ]
+  })
+}
+
+fn mcp_prompt_result(name: &str, arguments: Option<&Value>) -> Option<Value> {
+  match name {
+    "build_local_workflow" => {
+      let goal = arguments
+        .and_then(|value| value.get("goal"))
+        .and_then(Value::as_str)
+        .unwrap_or("um novo workflow no canvas");
+
+      Some(json!({
+        "description": "Build a local Flow Merge workflow",
+        "messages": [
+          {
+            "role": "user",
+            "content": {
+              "type": "text",
+              "text": format!("Use o Flow Merge para montar um workflow local para {}. Primeiro leia o workspace atual e depois execute o assistente nativo com applyChanges=true.", goal)
+            }
+          }
+        ]
+      }))
+    }
+    "analyze_active_workflow" => Some(json!({
+      "description": "Analyze the active Flow Merge workflow",
+      "messages": [
+        {
+          "role": "user",
+          "content": {
+            "type": "text",
+            "text": "Leia o workflow ativo do Flow Merge, explique o que ele mede ou executa, aponte gaps de observabilidade e sugira a proxima acao operacional."
+          }
+        }
+      ]
+    })),
+    "integrate_project_signal" => {
+      let signal = arguments
+        .and_then(|value| value.get("signal"))
+        .and_then(Value::as_str)
+        .unwrap_or("um sinal do projeto atual");
+
+      Some(json!({
+        "description": "Integrate a project signal into Flow Merge",
+        "messages": [
+          {
+            "role": "user",
+            "content": {
+              "type": "text",
+              "text": format!("Use o workspace atual do Flow Merge para integrar {} ao canvas local. Leia o snapshot do workspace, escolha o workflow certo e rode o assistente nativo para criar ou ajustar o fluxo.", signal)
+            }
+          }
+        ]
+      }))
+    }
+    _ => None,
+  }
+}
+
+async fn dispatch_mcp_bridge_request(
+  app: &AppHandle,
+  state: &McpServerState,
+  kind: &str,
+  payload: Value,
+) -> Result<Value, String> {
+  let request_id = uuid::Uuid::new_v4().to_string();
+  let request = McpBridgeRequest {
+    request_id: request_id.clone(),
+    kind: kind.to_string(),
+    payload: Some(payload),
+  };
+  let (sender, receiver) = oneshot::channel::<McpBridgeResponse>();
+
+  {
+    let mut pending = state.pending.lock().await;
+    pending.insert(request_id.clone(), sender);
+  }
+
+  if let Err(error) = app.emit(MCP_REQUEST_EVENT_NAME, &request) {
+    let mut pending = state.pending.lock().await;
+    pending.remove(&request_id);
+    return Err(format!("failed to emit MCP request: {error}"));
+  }
+
+  match timeout(Duration::from_secs(120), receiver).await {
+    Ok(Ok(response)) => {
+      if response.ok {
+        Ok(response.payload.unwrap_or_else(|| json!({})))
+      } else {
+        Err(response
+          .error
+          .unwrap_or_else(|| "Flow Merge MCP bridge returned an unknown error.".to_string()))
+      }
+    }
+    Ok(Err(_)) => Err("Flow Merge MCP bridge dropped the request.".to_string()),
+    Err(_) => {
+      let mut pending = state.pending.lock().await;
+      pending.remove(&request_id);
+      Err("Flow Merge MCP bridge timed out.".to_string())
+    }
+  }
+}
+
+fn tool_result_text(name: &str, payload: &Value) -> String {
+  match name {
+    "flow_merge_run_assistant" => {
+      let message = payload
+        .get("response")
+        .and_then(|value| value.get("message"))
+        .and_then(Value::as_str)
+        .unwrap_or("Flow Merge assistant executed.");
+      let workflow_id = payload
+        .get("workflowId")
+        .and_then(Value::as_str)
+        .unwrap_or("active workflow");
+      let created = payload
+        .get("createdNodeIds")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0);
+      let edges = payload
+        .get("appliedEdges")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+
+      format!(
+        "{message}\n\nWorkflow alvo: {workflow_id}\nNodes criados: {created}\nEdges aplicadas: {edges}"
+      )
+    }
+    _ => serde_json::to_string_pretty(payload).unwrap_or_else(|_| payload.to_string()),
+  }
+}
+
 async fn handle_runtime_webhook(
   AxumState(state): AxumState<HttpRuntimeState>,
   method: Method,
@@ -372,6 +961,249 @@ async fn handle_runtime_webhook(
   }
 }
 
+async fn handle_mcp_get(
+  AxumState(state): AxumState<HttpRuntimeState>,
+  headers: HeaderMap,
+  uri: Uri,
+) -> Response<Body> {
+  if let Some(response) =
+    validate_mcp_http_request(&uri, &headers, &state.shared, &state.mcp).await
+  {
+    return response;
+  }
+
+  jsonrpc_error(
+    None,
+    -32005,
+    "This Flow Merge MCP endpoint only supports POST for stateless requests.",
+    None,
+    StatusCode::METHOD_NOT_ALLOWED,
+  )
+}
+
+async fn handle_mcp_delete(
+  AxumState(state): AxumState<HttpRuntimeState>,
+  headers: HeaderMap,
+  uri: Uri,
+) -> Response<Body> {
+  if let Some(response) =
+    validate_mcp_http_request(&uri, &headers, &state.shared, &state.mcp).await
+  {
+    return response;
+  }
+
+  Response::builder()
+    .status(StatusCode::METHOD_NOT_ALLOWED)
+    .body(Body::empty())
+    .unwrap_or_else(|_| Response::new(Body::empty()))
+}
+
+async fn handle_mcp_post(
+  AxumState(state): AxumState<HttpRuntimeState>,
+  headers: HeaderMap,
+  uri: Uri,
+  body: Bytes,
+) -> Response<Body> {
+  if let Some(response) =
+    validate_mcp_http_request(&uri, &headers, &state.shared, &state.mcp).await
+  {
+    return response;
+  }
+
+  let parsed_body = match serde_json::from_slice::<Value>(&body) {
+    Ok(value) => value,
+    Err(error) => {
+      return jsonrpc_error(
+        None,
+        -32700,
+        "Invalid JSON payload",
+        Some(json!({ "error": error.to_string() })),
+        StatusCode::BAD_REQUEST,
+      );
+    }
+  };
+
+  let id = parse_jsonrpc_id(&parsed_body);
+  let method = parsed_body
+    .get("method")
+    .and_then(Value::as_str)
+    .unwrap_or_default();
+  let params = parsed_body.get("params").cloned().unwrap_or_else(|| json!({}));
+
+  match method {
+    "initialize" => {
+      let requested_protocol = params
+        .get("protocolVersion")
+        .and_then(Value::as_str)
+        .unwrap_or(MCP_PROTOCOL_VERSION);
+      let negotiated_protocol = if requested_protocol == MCP_PROTOCOL_VERSION
+        || requested_protocol == MCP_FALLBACK_PROTOCOL_VERSION
+      {
+        requested_protocol
+      } else {
+        MCP_PROTOCOL_VERSION
+      };
+
+      let result = json!({
+        "protocolVersion": negotiated_protocol,
+        "capabilities": mcp_server_capabilities(),
+        "serverInfo": mcp_server_info(),
+        "instructions": mcp_instructions(),
+      });
+
+      jsonrpc_success(id.unwrap_or_else(|| Value::Null), result)
+    }
+    "notifications/initialized" => accepted_empty_response(),
+    "ping" => jsonrpc_success(id.unwrap_or_else(|| Value::Null), json!({})),
+    "tools/list" => jsonrpc_success(id.unwrap_or_else(|| Value::Null), mcp_tools_list()),
+    "resources/list" => {
+      jsonrpc_success(id.unwrap_or_else(|| Value::Null), mcp_resources_list())
+    }
+    "resources/templates/list" => jsonrpc_success(
+      id.unwrap_or_else(|| Value::Null),
+      mcp_resource_templates_list(),
+    ),
+    "prompts/list" => jsonrpc_success(id.unwrap_or_else(|| Value::Null), mcp_prompts_list()),
+    "prompts/get" => {
+      let Some(name) = params.get("name").and_then(Value::as_str) else {
+        return jsonrpc_error(
+          id,
+          -32602,
+          "Prompt name is required",
+          None,
+          StatusCode::BAD_REQUEST,
+        );
+      };
+
+      match mcp_prompt_result(name, params.get("arguments")) {
+        Some(result) => jsonrpc_success(parse_jsonrpc_id(&parsed_body).unwrap_or(Value::Null), result),
+        None => jsonrpc_error(
+          parse_jsonrpc_id(&parsed_body),
+          -32602,
+          "Unknown prompt",
+          None,
+          StatusCode::BAD_REQUEST,
+        ),
+      }
+    }
+    "resources/read" => {
+      let Some(uri) = params.get("uri").and_then(Value::as_str) else {
+        return jsonrpc_error(
+          id,
+          -32602,
+          "Resource uri is required",
+          None,
+          StatusCode::BAD_REQUEST,
+        );
+      };
+
+      match dispatch_mcp_bridge_request(
+        &state.app_handle,
+        &state.mcp,
+        "read_resource",
+        json!({ "uri": uri }),
+      )
+      .await
+      {
+        Ok(result) => jsonrpc_success(parse_jsonrpc_id(&parsed_body).unwrap_or(Value::Null), result),
+        Err(error) => jsonrpc_error(
+          parse_jsonrpc_id(&parsed_body),
+          -32010,
+          &error,
+          None,
+          StatusCode::BAD_REQUEST,
+        ),
+      }
+    }
+    "tools/call" => {
+      let Some(name) = params.get("name").and_then(Value::as_str) else {
+        return jsonrpc_error(
+          id,
+          -32602,
+          "Tool name is required",
+          None,
+          StatusCode::BAD_REQUEST,
+        );
+      };
+
+      let bridge_result = match name {
+        "flow_merge_workspace_snapshot" => {
+          dispatch_mcp_bridge_request(
+            &state.app_handle,
+            &state.mcp,
+            "get_workspace_snapshot",
+            json!({}),
+          )
+          .await
+        }
+        "flow_merge_get_workflow" => {
+          dispatch_mcp_bridge_request(
+            &state.app_handle,
+            &state.mcp,
+            "get_workflow",
+            params.get("arguments").cloned().unwrap_or_else(|| json!({})),
+          )
+          .await
+        }
+        "flow_merge_set_active_workflow" => {
+          dispatch_mcp_bridge_request(
+            &state.app_handle,
+            &state.mcp,
+            "set_active_workflow",
+            params.get("arguments").cloned().unwrap_or_else(|| json!({})),
+          )
+          .await
+        }
+        "flow_merge_run_assistant" => {
+          dispatch_mcp_bridge_request(
+            &state.app_handle,
+            &state.mcp,
+            "run_assistant",
+            params.get("arguments").cloned().unwrap_or_else(|| json!({})),
+          )
+          .await
+        }
+        _ => Err("Unknown Flow Merge MCP tool.".to_string()),
+      };
+
+      match bridge_result {
+        Ok(payload) => jsonrpc_success(
+          parse_jsonrpc_id(&parsed_body).unwrap_or(Value::Null),
+          json!({
+            "content": [
+              {
+                "type": "text",
+                "text": tool_result_text(name, &payload)
+              }
+            ],
+            "structuredContent": payload
+          }),
+        ),
+        Err(error) => jsonrpc_success(
+          parse_jsonrpc_id(&parsed_body).unwrap_or(Value::Null),
+          json!({
+            "content": [
+              {
+                "type": "text",
+                "text": format!("Error: {error}")
+              }
+            ],
+            "isError": true
+          }),
+        ),
+      }
+    }
+    _ if id.is_none() => accepted_empty_response(),
+    _ => jsonrpc_error(
+      id,
+      -32601,
+      "Method not found",
+      Some(json!({ "method": method })),
+      StatusCode::BAD_REQUEST,
+    ),
+  }
+}
+
 #[tauri::command]
 async fn runtime_status(
   state: TauriState<'_, RuntimeServerState>,
@@ -414,6 +1246,57 @@ async fn runtime_complete_webhook_delivery(
     sender
       .send(completion)
       .map_err(|_| "failed to complete delivery".to_string())?;
+    return Ok(true);
+  }
+
+  Ok(false)
+}
+
+#[tauri::command]
+async fn mcp_status(
+  runtime: TauriState<'_, RuntimeServerState>,
+  mcp: TauriState<'_, McpServerState>,
+) -> Result<McpRuntimeStatus, String> {
+  Ok(mcp_runtime_status_payload(&runtime, &mcp).await)
+}
+
+#[tauri::command]
+async fn mcp_configure(
+  config: McpRuntimeConfig,
+  runtime: TauriState<'_, RuntimeServerState>,
+  mcp: TauriState<'_, McpServerState>,
+) -> Result<McpRuntimeStatus, String> {
+  let next = McpRuntimeConfig {
+    enabled: config.enabled,
+    auth_token: config.auth_token.trim().to_string(),
+    server_name: if config.server_name.trim().is_empty() {
+      MCP_DEFAULT_SERVER_NAME.to_string()
+    } else {
+      config.server_name.trim().to_string()
+    },
+  };
+
+  let mut shared = mcp.config.lock().await;
+  *shared = next;
+  drop(shared);
+
+  Ok(mcp_runtime_status_payload(&runtime, &mcp).await)
+}
+
+#[tauri::command]
+async fn mcp_complete_request(
+  response: McpBridgeResponse,
+  mcp: TauriState<'_, McpServerState>,
+) -> Result<bool, String> {
+  let sender = {
+    let mut pending = mcp.pending.lock().await;
+    pending.remove(&response.request_id)
+  };
+
+  if let Some(sender) = sender {
+    sender
+      .send(response)
+      .map_err(|_| "failed to complete MCP request".to_string())?;
     return Ok(true);
   }
 
@@ -765,9 +1648,11 @@ async fn updater_install_ready(
 }
 
 fn spawn_runtime_server(app_handle: AppHandle, shared: RuntimeServerState) {
+  let mcp_state = app_handle.state::<McpServerState>().inner().clone();
   let http_state = HttpRuntimeState {
     app_handle,
     shared: shared.clone(),
+    mcp: mcp_state,
   };
 
   tauri::async_runtime::spawn(async move {
@@ -785,6 +1670,7 @@ fn spawn_runtime_server(app_handle: AppHandle, shared: RuntimeServerState) {
     }
 
     let router = Router::new()
+      .route("/mcp", post(handle_mcp_post).get(handle_mcp_get).delete(handle_mcp_delete))
       .route("/", any(handle_runtime_webhook))
       .route("/*path", any(handle_runtime_webhook))
       .with_state(http_state);
@@ -813,9 +1699,14 @@ pub fn run() {
       let updater_state = UpdaterRuntimeState {
         pending: Arc::new(Mutex::new(None)),
       };
+      let mcp_state = McpServerState {
+        config: Arc::new(Mutex::new(McpRuntimeConfig::default())),
+        pending: Arc::new(Mutex::new(HashMap::new())),
+      };
 
       app.manage(runtime_state.clone());
       app.manage(updater_state);
+      app.manage(mcp_state);
       spawn_runtime_server(app.handle().clone(), runtime_state);
       app.handle().plugin(tauri_plugin_process::init())?;
       app.handle().plugin(
@@ -837,6 +1728,9 @@ pub fn run() {
       runtime_status,
       runtime_sync_webhooks,
       runtime_complete_webhook_delivery,
+      mcp_status,
+      mcp_configure,
+      mcp_complete_request,
       updater_get_config,
       updater_check,
       updater_download,

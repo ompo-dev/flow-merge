@@ -11,69 +11,14 @@ import {
   Send,
   X,
 } from "lucide-react";
-import type { AIResponse, NodeCommand } from "@/lib/deepseek";
-import { streamDeepSeek } from "@/lib/deepseek";
+import { runFlowMergeAssistant } from "@/lib/assistant-runner";
 import { GenerativeUIRenderer } from "@/components/canvas/GenerativeUIRenderer";
 import { ICONS } from "@/components/nodes/SharedNodeComponents";
 import { MarkdownContent } from "@/components/ui/MarkdownContent";
 import { useActiveWorkflow, useFlowStore } from "@/store/useFlowStore";
-import type { AppNode, GenerativeComponent } from "@/lib/flow-types";
+import type { AppNode } from "@/lib/flow-types";
 
 const EMPTY_NODES: AppNode[] = [];
-
-function normalizeNodeRef(value: string) {
-  return value.trim().toLowerCase();
-}
-
-function buildNodeReferenceMap(
-  existingNodes: AppNode[],
-  createdNodes: AppNode[],
-  response: AIResponse,
-) {
-  const references = new Map<string, string>();
-
-  [...existingNodes, ...createdNodes].forEach((node) => {
-    references.set(node.id, node.id);
-    references.set(normalizeNodeRef(node.id), node.id);
-    references.set(normalizeNodeRef(String(node.data.label)), node.id);
-  });
-
-  response.nodes?.forEach((spec, index) => {
-    const createdNode = createdNodes[index];
-    if (!createdNode) return;
-    if (spec.alias) {
-      references.set(normalizeNodeRef(spec.alias), createdNode.id);
-    }
-  });
-
-  return references;
-}
-
-function resolveNodeReference(
-  referenceMap: Map<string, string>,
-  reference?: string,
-) {
-  if (!reference) return null;
-  return (
-    referenceMap.get(reference) ??
-    referenceMap.get(normalizeNodeRef(reference)) ??
-    null
-  );
-}
-
-function extractEdgeCommands(commands?: NodeCommand[]) {
-  return (commands ?? [])
-    .filter(
-      (command) =>
-        command.command === "create_edge" && command.source && command.target,
-    )
-    .map((command) => ({
-      source: command.source!,
-      target: command.target!,
-      sourceHandle: command.sourceHandle ?? null,
-      targetHandle: command.targetHandle ?? null,
-    }));
-}
 
 export function AIChatPanel() {
   const activeWorkflow = useActiveWorkflow();
@@ -166,85 +111,32 @@ export function AIChatPanel() {
 
     addUserMessage(value, threadId);
 
-    await streamDeepSeek(
-      deepseekKey,
-      value,
-      history,
-      contextNodes,
-      activeWorkflow,
-      (chunk) => appendStreamChunk(threadId, chunk),
-      (parsed) => {
-        resolveAssistantMessage(
-          threadId,
-          parsed.message,
-          (parsed.ui as GenerativeComponent[]) ?? [],
-        );
+    try {
+      const result = await runFlowMergeAssistant({
+        prompt: value,
+        apiKey: deepseekKey,
+        history,
+        contextNodes,
+        workflow: activeWorkflow,
+        existingNodes: nodes,
+        addAiNodes,
+        updateNodeData,
+        deleteNode,
+        onConnect,
+        onChunk: (chunk) => appendStreamChunk(threadId, chunk),
+      });
 
-        let createdNodes: AppNode[] = [];
-        if (parsed.nodes?.length) {
-          createdNodes = addAiNodes(parsed.nodes);
-        }
-
-        const referenceMap = buildNodeReferenceMap(nodes, createdNodes, parsed);
-        const explicitEdges = [
-          ...(parsed.edges ?? []),
-          ...extractEdgeCommands(parsed.commands),
-        ];
-
-        parsed.commands?.forEach((command) => {
-          if (
-            command.command === "update_node" &&
-            command.nodeId &&
-            command.data
-          ) {
-            const resolvedNodeId = resolveNodeReference(
-              referenceMap,
-              command.nodeId,
-            );
-            if (resolvedNodeId) {
-              updateNodeData(resolvedNodeId, command.data);
-            }
-          }
-          if (command.command === "delete_node" && command.nodeId) {
-            const resolvedNodeId = resolveNodeReference(
-              referenceMap,
-              command.nodeId,
-            );
-            if (resolvedNodeId) {
-              deleteNode(resolvedNodeId);
-            }
-          }
-        });
-
-        if (explicitEdges.length) {
-          explicitEdges.forEach((edge) => {
-            const source = resolveNodeReference(referenceMap, edge.source);
-            const target = resolveNodeReference(referenceMap, edge.target);
-            if (!source || !target || source === target) return;
-
-            onConnect({
-              source,
-              target,
-              sourceHandle: edge.sourceHandle ?? null,
-              targetHandle: edge.targetHandle ?? null,
-            });
-          });
-        } else if (createdNodes.length) {
-          createdNodes.forEach((node, index) => {
-            if (index === 0) return;
-            onConnect({
-              source: createdNodes[index - 1].id,
-              target: node.id,
-              sourceHandle: null,
-              targetHandle: null,
-            });
-          });
-        }
-      },
-      (error) => {
-        failAssistantMessage(threadId, error);
-      },
-    );
+      resolveAssistantMessage(
+        threadId,
+        result.response.message,
+        result.generativeUI,
+      );
+    } catch (error) {
+      failAssistantMessage(
+        threadId,
+        error instanceof Error ? error.message : "Falha ao executar assistente.",
+      );
+    }
   };
 
   const messageCount = activeThread?.messages.length ?? 0;

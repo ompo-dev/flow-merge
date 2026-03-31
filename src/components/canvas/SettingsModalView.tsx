@@ -14,6 +14,7 @@ import {
   Zap,
 } from "lucide-react";
 import { PixChargeCard } from "@/components/billing/PixChargeCard";
+import { McpSettingsPanel } from "@/components/settings/McpSettingsPanel";
 import { ModalPanelShell } from "@/components/ui/ModalPanelShell";
 import {
   canOfferLifetimePlan,
@@ -31,7 +32,7 @@ import {
 import { useAuthStore } from "@/store/useAuthStore";
 import { useActiveProject, useActiveWorkflow, useFlowStore } from "@/store/useFlowStore";
 
-type SettingsTabId = "general" | "appearance" | "account";
+type SettingsTabId = "general" | "appearance" | "account" | "mcp";
 
 function describeUpdateState(state: AppUpdateState) {
   switch (state) {
@@ -407,7 +408,7 @@ export function SettingsModalView({ onClose }: { onClose: () => void }) {
       onClose={onClose}
       headerContent={
         <div className="rounded-lg border border-[#30363d] bg-[#0d1117] p-1">
-          <div className="grid grid-cols-3 gap-1">
+          <div className="grid grid-cols-4 gap-1">
             <button
               type="button"
               onClick={() => setActiveTab("general")}
@@ -444,13 +445,25 @@ export function SettingsModalView({ onClose }: { onClose: () => void }) {
             >
               Conta
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("mcp")}
+              data-testid="settings-tab-mcp"
+              className={`rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors ${
+                activeTab === "mcp"
+                  ? "bg-[#1f6feb] text-white"
+                  : "text-[#7d8590] hover:bg-[#161b22] hover:text-[#e6edf3]"
+              }`}
+            >
+              MCP
+            </button>
           </div>
         </div>
       }
       footer={
         <div className="flex items-center justify-between gap-3">
           <div className="text-[11px] text-[#7d8590]">
-            Salvar aplica a chave da IA e a aparencia do projeto e workflow.
+            Salvar aplica a chave da IA e a aparencia do projeto e workflow. A aba MCP sincroniza localmente em tempo real.
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -1070,6 +1083,8 @@ export function SettingsModalView({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
             ) : null}
+
+            {activeTab === "mcp" ? <McpSettingsPanel /> : null}
     </ModalPanelShell>
   );
 }

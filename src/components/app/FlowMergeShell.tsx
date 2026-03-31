@@ -5,6 +5,7 @@ import { AlertTriangle, CreditCard, Trash2 } from "lucide-react";
 import { LandingPage } from "@/components/app/LandingPage";
 import { PixChargeCard } from "@/components/billing/PixChargeCard";
 import { CanvasEntry } from "@/components/canvas/CanvasEntry";
+import { McpRuntimeBridge } from "@/components/runtime/McpRuntimeBridge";
 import { DesktopUpdateBridge } from "@/components/runtime/DesktopUpdateBridge";
 import { BrandMark } from "@/components/ui/BrandMark";
 import { ModalPanelShell } from "@/components/ui/ModalPanelShell";
@@ -418,6 +419,7 @@ export function FlowMergeShell({
   return (
     <>
       <DesktopUpdateBridge />
+      <McpRuntimeBridge />
       {!license.authenticated ? (
         <LandingPage initialWorkflowId={landingWorkflowId} />
       ) : null}
